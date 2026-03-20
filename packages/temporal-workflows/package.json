@@ -1,5 +1,5 @@
 {
-  "name": "temporal-workflows",
+  "name": "@saas-factory/temporal-workflows",
   "version": "1.0.0",
   "private": true,
   "type": "module",

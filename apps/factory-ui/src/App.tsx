@@ -1,8 +1,16 @@
+import { useState } from 'react'
 import { Board } from './components/Board'
+import { BuildModal } from './components/BuildModal'
 import { LogStream } from './components/LogStream'
 import { ProjectPanel } from './components/ProjectPanel'
+import { useWebSocket } from './hooks/useWebSocket'
 
 function App() {
+  const [showBuildModal, setShowBuildModal] = useState(false)
+
+  // Connect to factory backend WebSocket — handles lifecycle internally
+  useWebSocket()
+
   return (
     <div className="h-screen flex flex-col bg-zinc-950 text-zinc-100">
       {/* Top bar */}
@@ -16,7 +24,10 @@ function App() {
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
             <span className="text-xs text-zinc-400">Temporal Connected</span>
           </div>
-          <button className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors font-medium">
+          <button
+            onClick={() => setShowBuildModal(true)}
+            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors font-medium"
+          >
             New Build
           </button>
         </div>
@@ -39,6 +50,9 @@ function App() {
           <ProjectPanel />
         </div>
       </div>
+
+      {/* Build Modal */}
+      <BuildModal isOpen={showBuildModal} onClose={() => setShowBuildModal(false)} />
     </div>
   )
 }

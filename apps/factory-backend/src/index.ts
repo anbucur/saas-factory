@@ -49,17 +49,52 @@ app.get('/api/builds/:id', (c) => {
   return c.json({ buildId: id, status: 'running', progress: 45 })
 })
 
-// WebSocket endpoint for real-time updates
-app.use('/ws', async (c) => {
-  // Upgrade to WebSocket
-  const upgradeHeader = c.req.header('upgrade')
-  if (!upgradeHeader || upgradeHeader !== 'websocket') {
-    return c.text('Expected Upgrade: websocket', 426)
+// Event ingestion endpoint — accepts events from the Temporal worker and
+// broadcasts them to all connected WebSocket clients
+app.post('/api/events', async (c) => {
+  const event = await c.req.json<{
+    type: string
+    payload: Record<string, unknown>
+    timestamp?: number
+  }>()
+
+  // Broadcast to all WebSocket clients
+  broadcast({
+    type: event.type,
+    payload: event.payload,
+    timestamp: event.timestamp ?? Date.now(),
+  })
+
+  return c.json({ ok: true })
+})
+
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', async (c) => {
+    return c.text('Production mode - serve from build')
+  })
+}
+
+const port = 3001
+console.log(`🚀 Factory Backend running on http://localhost:${port}`)
+
+// Start HTTP server and attach WebSocket handler
+const server = serve({
+  fetch: app.fetch,
+  port,
+})
+
+// WebSocket server on /ws path using the raw HTTP server's upgrade event
+const wss = new WebSocketServer({ noServer: true })
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url ?? '', `http://${request.headers.host}`)
+  if (url.pathname !== '/ws') {
+    socket.destroy()
+    return
   }
 
-  const wss = new WebSocketServer({ noServer: true })
-
-  wss.on('connection', (ws) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
     clients.add(ws)
     console.log('Client connected. Total:', clients.size)
 
@@ -73,25 +108,7 @@ app.use('/ws', async (c) => {
       clients.delete(ws)
     })
 
-    // Send initial state
+    // Send initial connected event
     ws.send(JSON.stringify({ type: 'connected', payload: { timestamp: Date.now() } }))
   })
-
-  // Return a 401 if we can't upgrade (Hono doesn't handle this natively)
-  return c.text('WebSocket upgrade failed', 401)
-})
-
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  app.get('*', async (c) => {
-    return c.text('Production mode - serve from build')
-  })
-}
-
-const port = 3001
-console.log(`🚀 Factory Backend running on http://localhost:${port}`)
-
-serve({
-  fetch: app.fetch,
-  port,
 })
