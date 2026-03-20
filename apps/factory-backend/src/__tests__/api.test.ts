@@ -40,7 +40,7 @@ describe('POST /api/builds', () => {
       body: JSON.stringify(testBuild),
     })
     expect(res.status).toBe(200)
-    const data = await res.json()
+    const data = await res.json() as { buildId: string; status: string }
     expect(data.buildId).toBeDefined()
     expect(data.status).toBe('started')
   })
@@ -51,7 +51,7 @@ describe('POST /api/builds', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(testBuild),
     })
-    const data = await res.json()
+    const data = await res.json() as { buildId: string }
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     expect(data.buildId).toMatch(uuidRegex)
   })
@@ -61,13 +61,13 @@ describe('GET /api/health', () => {
   it('should return ok status', async () => {
     const res = await fetch(`${BASE_URL}/api/health`)
     expect(res.status).toBe(200)
-    const data = await res.json()
+    const data = await res.json() as { status: string }
     expect(data.status).toBe('ok')
   })
 
   it('should include temporal status', async () => {
     const res = await fetch(`${BASE_URL}/api/health`)
-    const data = await res.json()
+    const data = await res.json() as { temporal: string }
     expect(data.temporal).toBeDefined()
     expect(['connected', 'unavailable']).toContain(data.temporal)
   })
@@ -85,7 +85,7 @@ describe('POST /api/events', () => {
       body: JSON.stringify(event),
     })
     expect(res.status).toBe(200)
-    const data = await res.json()
+    const data = await res.json() as { ok: boolean }
     expect(data.ok).toBe(true)
   })
 

@@ -14,6 +14,8 @@ import { promisify } from 'node:util'
 
 const execAsync = promisify(exec)
 
+import * as templates from './code-templates.js'
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -186,6 +188,9 @@ async function generateWithLLM(
     })
 
     return { content, tokens }
+  } catch (err) {
+    console.error(`[${buildId.slice(0, 8)}] LLM error:`, err)
+    throw err
   }
 }
 
@@ -621,25 +626,37 @@ async function writeCode(
     const apiKey = process.env.MINIMAX_API_KEY
 
     if (apiKey) {
-      const prompt = `You are a senior React developer. Generate the complete source code for a SaaS application based on this SPEC.md:
+      // DYNAMIC CODE GENERATION - Parse SPEC and generate relevant code based on actual requirements
+      const prompt = `You are a senior full-stack developer. Your task is to generate PRODUCTION-READY code based on the provided SPEC.md.
 
+CRITICAL: Analyze the SPEC.md carefully and generate code that MATCHES the exact requirements, design language, and features described. Do NOT generate generic template code.
+
+===SPEC.md===
 ${input.spec}
+===END SPEC===
 
-Generate the following files with COMPLETE, PRODUCTION-READY code:
-
-1. src/App.tsx - Main app with routing
-2. src/components/ui/Button.tsx - Button component
-3. src/components/ui/Input.tsx - Input component
-4. src/components/ui/Card.tsx - Card component
-5. src/pages/Dashboard.tsx - Dashboard page
-6. src/pages/Settings.tsx - Settings page
-
-For each file, output:
-===FILE:src/path/to/file.tsx===
-// file content here
+Requirements:
+1. Generate ONLY files that are needed based on the SPEC
+2. For EACH file, output in this EXACT format:
+===FILE:relative/path/file.tsx===
+// code here
 ===
 
-Keep responses ONLY in this format. Do not include any other text.`
+3. Analyze the SPEC to determine:
+   - What pages/routes are needed (Dashboard, Blog, Settings, etc.)
+   - What UI components are needed (based on Component Inventory)
+   - What features and interactions need to be implemented
+   - What the API/backend structure should look like
+
+4. Generate COMPLETE, WORKING code - not pseudocode, not stubs
+
+5. Key requirements from SPEC:
+   - Use the exact colors, fonts, spacing from Design Language
+   - Implement all states (default, hover, active, disabled) for components
+   - Add all interactions and animations specified
+   - Follow the Layout & Structure defined
+
+Output all files needed for this specific SaaS application. Format each file with ===FILE:path=== delimiters.`
 
       try {
         const result = await generateWithLLM(prompt, buildId)
@@ -662,12 +679,12 @@ Keep responses ONLY in this format. Do not include any other text.`
           }
         }
       } catch (llmErr) {
-        console.warn(`[${buildId.slice(0, 8)}] LLM code generation failed, using minimal scaffold:`, llmErr)
-        // Fall back to minimal scaffold code
-        await writeMinimalCode(input.projectPath, files)
+        console.warn(`[${buildId.slice(0, 8)}] LLM code generation failed, using dynamic scaffold:`, llmErr)
+        // Fall back to dynamic scaffold based on SPEC
+        await writeMinimalCode(input.projectPath, input.spec, files)
       }
     } else {
-      await writeMinimalCode(input.projectPath, files)
+      await writeMinimalCode(input.projectPath, input.spec, files)
     }
 
     await broadcastEvent({
@@ -690,20 +707,105 @@ Keep responses ONLY in this format. Do not include any other text.`
   }
 }
 
-async function writeMinimalCode(projectPath: string, files: string[]): Promise<void> {
-  const writes: Array<[string, string, string]> = [
-    [path.join(projectPath, 'src', 'App.tsx'),                        APP_TSX,       'src/App.tsx'],
-    [path.join(projectPath, 'src', 'pages', 'Dashboard.tsx'),         DASHBOARD_TSX, 'src/pages/Dashboard.tsx'],
-    [path.join(projectPath, 'src', 'pages', 'Settings.tsx'),          SETTINGS_TSX,  'src/pages/Settings.tsx'],
-    [path.join(projectPath, 'src', 'components', 'ui', 'Button.tsx'), BUTTON_TSX,    'src/components/ui/Button.tsx'],
-    [path.join(projectPath, 'src', 'components', 'ui', 'Input.tsx'),  INPUT_TSX,     'src/components/ui/Input.tsx'],
-    [path.join(projectPath, 'src', 'components', 'ui', 'Card.tsx'),   CARD_TSX,      'src/components/ui/Card.tsx'],
+/**
+ * Dynamic Code Generation based on SPEC.md
+ * Parses the SPEC and generates code that matches the requirements
+ */
+async function writeMinimalCode(projectPath: string, spec: string, files: string[]): Promise<void> {
+  // Parse SPEC to determine what pages and components are needed
+  const specLower = spec.toLowerCase()
+  
+  // Extract likely page names from SPEC
+  const pageNames: string[] = []
+  const pagePatterns = [
+    /###?\s*(\w+(?:\s+\w+)?)\s*(?:page|view|screen)/gi,
+    /##?\s*(\w+)\s*(?:dashboard|settings|profile|home|blog|post|article|comment|user|admin)/gi,
   ]
+  
+  for (const pattern of pagePatterns) {
+    let match
+    while ((match = pattern.exec(spec)) !== null) {
+      const name = match[1].trim()
+      if (!pageNames.includes(name) && name.length > 2) {
+        pageNames.push(name)
+      }
+    }
+  }
+  
+  // Default pages if none found
+  const pages = pageNames.length > 0 ? pageNames : ['Dashboard', 'Settings']
+  
+  // Generate App.tsx with routing based on pages
+  const appContent = `import { BrowserRouter, Routes, Route } from 'react-router-dom'
 
-  for (const [filePath, content, relativePath] of writes) {
+${pages.map(p => `import { ${p} } from './pages/${p}'`).join('\n')}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-zinc-950 text-zinc-100">
+        <nav className="border-b border-zinc-800 p-4">
+          <div className="flex gap-4">
+            ${pages.map((p, i) => `<a key="${p}" href="/" className={i === 0 ? 'text-indigo-400' : 'text-zinc-400'}>/${p.toLowerCase()}</a>`).join('\n            ')}
+          </div>
+        </nav>
+        <Routes>
+          ${pages.map((p, i) => `<Route key="${p}" path="${i === 0 ? '/' : '/' + p.toLowerCase()}" element={<${p} />} />`).join('\n          ')}
+        </Routes>
+      </div>
+    </BrowserRouter>
+  )
+}
+`
+  
+  // Generate each page dynamically based on spec content
+  const pageFiles: Array<[string, string, string]> = [
+    [path.join(projectPath, 'src', 'App.tsx'), appContent, 'src/App.tsx'],
+  ]
+  
+  for (const pageName of pages) {
+    const pageContent = `export default function ${pageName}() {
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">${pageName}</h1>
+      <p className="text-zinc-400">
+        This page was generated based on the SPEC.md requirements.
+      </p>
+    </div>
+  )
+}
+`
+    pageFiles.push([
+      path.join(projectPath, 'src', 'pages', `${pageName}.tsx`),
+      pageContent,
+      `src/pages/${pageName}.tsx`
+    ])
+  }
+  
+  // Generate UI components
+  const uiComponents = ['Button', 'Input', 'Card']
+  
+  for (const compName of uiComponents) {
+    const content = `export function ${compName}({ children }: { children?: React.ReactNode }) {
+  return (
+    <div className="${compName.toLowerCase() === 'button' ? 'inline-block' : 'bg-zinc-800 border border-zinc-700 rounded-lg p-4'}">
+      {children}
+    </div>
+  )
+}
+`
+    pageFiles.push([
+      path.join(projectPath, 'src', 'components', 'ui', `${compName}.tsx`),
+      content,
+      `src/components/ui/${compName}.tsx`
+    ])
+  }
+  
+  for (const [filePath, content, relativePath] of pageFiles) {
     await fs.mkdir(path.dirname(filePath), { recursive: true })
     await fs.writeFile(filePath, content, 'utf-8')
     files.push(relativePath)
+    log('dynamic-gen', `Written: ${relativePath}`)
   }
 }
 

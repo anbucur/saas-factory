@@ -7,7 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx src/worker.ts",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
@@ -23,14 +25,6 @@
     "@types/ws": "^8.5.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.0.0"
-  },
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "worker": "tsx src/worker.ts",
-    "test": "vitest",
-    "test:run": "vitest run"
+    "vitest": "^2.1.9"
   }
 }

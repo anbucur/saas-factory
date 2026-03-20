@@ -40,23 +40,35 @@ export function BuildModal({ isOpen, onClose }: BuildModalProps) {
     setIsSubmitting(true)
 
     try {
-      // Call the store to start the project
-      useFactoryStore.getState().startProject(name.trim(), description.trim())
-
-      // POST to the API
-      await fetch('http://localhost:3010/api/builds', {
+      console.log('[BuildModal] Starting build:', name.trim())
+      
+      // POST to the API first to trigger the workflow
+      const response = await fetch('http://localhost:3010/api/builds', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ name: name.trim(), description: description.trim() }),
       })
+      
+      console.log('[BuildModal] Response status:', response.status)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      console.log('[BuildModal] Build started:', data)
+      
+      // Call the store to update UI
+      useFactoryStore.getState().startProject(name.trim(), description.trim())
 
       // Close modal on success
       onClose()
     } catch (error) {
-      console.error('Failed to start build:', error)
+      console.error('[BuildModal] Failed to start build:', error)
       setIsSubmitting(false)
+      alert(`Failed to start build: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 

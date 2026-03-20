@@ -6,9 +6,32 @@ export function ProjectPanel() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!name.trim()) return
-    startProject(name.trim(), description.trim())
+    
+    console.log('[ProjectPanel] Starting project:', name.trim())
+    
+    try {
+      const response = await fetch('http://localhost:3010/api/builds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+      })
+      
+      console.log('[ProjectPanel] Response:', response.status)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      
+      const data = await response.json()
+      console.log('[ProjectPanel] Build started:', data)
+      
+      startProject(name.trim(), description.trim())
+    } catch (error) {
+      console.error('[ProjectPanel] Failed to start build:', error)
+      alert(`Failed to start build: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   // Demo mode - simulate a running project

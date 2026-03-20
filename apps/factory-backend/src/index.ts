@@ -49,11 +49,14 @@ app.post('/api/builds', async (c) => {
   const body = await c.req.json<{ name: string; description: string; features?: string[] }>()
   const buildId = crypto.randomUUID()
 
+  console.log(`[API] POST /api/builds - ${body.name} (${buildId})`)
+
   // Broadcast immediately so the UI shows the build as started
   broadcast({
     type: 'build:started',
     payload: { buildId, name: body.name, description: body.description },
   })
+  console.log(`[API] Broadcasted build:started to ${clients.size} clients`)
 
   const client = await getTemporalClient()
   if (client) {

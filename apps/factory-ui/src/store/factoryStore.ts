@@ -9,6 +9,10 @@ export const AGENT_META: Record<AgentType, { label: string; color: string; emoji
   billing: { label: 'Billing', color: '#f59e0b', emoji: '💰' },
   deploy: { label: 'Deploy', color: '#06b6d4', emoji: '🚀' },
   ramses: { label: 'Ramses', color: '#eab308', emoji: '🔱' },
+  'spec-generator': { label: 'Spec Gen', color: '#8b5cf6', emoji: '📝' },
+  scaffolder: { label: 'Scaffolder', color: '#14b8a6', emoji: '🏗️' },
+  builder: { label: 'Builder', color: '#f97316', emoji: '🔨' },
+  tester: { label: 'Tester', color: '#06b6d4', emoji: '🧪' },
 }
 
 // Zone positions on the board (percentage-based)

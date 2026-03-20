@@ -10,9 +10,11 @@ const MAX_RECONNECT_ATTEMPTS = 10
 type BackendEvent =
   | { type: 'connected'; payload: Record<string, never> }
   | { type: 'build:started'; payload: { name: string; description: string } }
-  | { type: 'agent:spawn'; payload: { agentId: string; agentType: AgentType; task?: string } }
+  | { type: 'agent:spawn'; payload: { agentId: string; agent: string; task?: string } }
   | { type: 'agent:progress'; payload: { agentId: string; progress: number; message: string } }
   | { type: 'agent:complete'; payload: { agentId: string } }
+  | { type: 'phase:start'; payload: { phaseId: string } }
+  | { type: 'phase:complete'; payload: { phaseId: string } }
   | { type: 'agent:error'; payload: { agentId: string; error: string } }
   | { type: 'phase:complete'; payload: { phaseId: PhaseId } }
   | { type: 'log'; payload: Omit<LogEntry, 'id' | 'timestamp'> }
@@ -42,6 +44,7 @@ export function useWebSocket() {
         if (destroyed) return
         try {
           const msg: BackendEvent = JSON.parse(event.data)
+          console.log('[WS] Received:', msg.type, msg)
           handleEvent(msg)
         } catch (err) {
           console.error('[WS] Failed to parse message:', err)
@@ -96,7 +99,7 @@ export function useWebSocket() {
           break
 
         case 'agent:spawn':
-          store.spawnAgent(msg.payload.agentType, msg.payload.task || 'Working...')
+          store.spawnAgent(msg.payload.agent as AgentType, msg.payload.task || 'Working...')
           break
 
         case 'agent:progress':
