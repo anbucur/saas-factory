@@ -1,0 +1,24 @@
+{
+  "name": "temporal-workflows",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@temporalio/client": "^1.15.0",
+    "@temporalio/workflow": "^1.15.0",
+    "@temporalio/worker": "^1.15.0",
+    "@temporalio/activity": "^1.15.0",
+    "@temporalio/common": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

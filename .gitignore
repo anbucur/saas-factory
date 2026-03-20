@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+.build/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Temporal
+.data/
+
+# Docker volumes
+*.vol
+
+# Turborepo
+.turbo/
+
+# Vite
+*.local
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
