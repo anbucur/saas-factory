@@ -42,6 +42,12 @@ export interface SprintTask {
 }
 
 export interface MissionControlState {
+  // Project info
+  projectName: string
+  projectDescription: string
+  projectFeatures: string[]
+  projectStack: string[]
+  
   // Current workflow step
   currentStep: WorkflowStep
   stepProgress: number
@@ -61,7 +67,13 @@ export interface MissionControlState {
     timestamp: number
   }>
   
+  // Build status
+  buildId: string | null
+  isBuilding: boolean
+  buildError: string | null
+  
   // Actions
+  setProjectInfo: (name: string, description: string, features: string[], stack: string[]) => void
   setStep: (step: WorkflowStep, progress?: number) => void
   addSprint: (sprint: Sprint) => void
   updateSprintTask: (sprintId: string, taskId: string, status: SprintTask['status'], progress?: number) => void
@@ -70,6 +82,8 @@ export interface MissionControlState {
   setAgentProgress: (agentId: string, progress: number) => void
   addInteraction: (from: string, to: string, message: string) => void
   completeStep: () => void
+  setBuilding: (building: boolean, buildId?: string) => void
+  setBuildError: (error: string | null) => void
   reset: () => void
 }
 
@@ -85,12 +99,24 @@ const INITIAL_AGENTS: PixelAgent[] = [
 ]
 
 export const useMissionControlStore = create<MissionControlState>((set, get) => ({
+  // Initial state
+  projectName: '',
+  projectDescription: '',
+  projectFeatures: [],
+  projectStack: [],
   currentStep: 'briefing',
   stepProgress: 0,
   sprints: [],
   currentSprintIndex: 0,
   agents: INITIAL_AGENTS,
   agentInteractions: [],
+  buildId: null,
+  isBuilding: false,
+  buildError: null,
+
+  setProjectInfo: (name, description, features, stack) => {
+    set({ projectName: name, projectDescription: description, projectFeatures: features, projectStack: stack })
+  },
 
   setStep: (step, progress = 0) => {
     set({ currentStep: step, stepProgress: progress })
@@ -223,14 +249,29 @@ export const useMissionControlStore = create<MissionControlState>((set, get) => 
     }
   },
 
+  setBuilding: (building, buildId) => {
+    set({ isBuilding: building, buildId: buildId ?? null })
+  },
+
+  setBuildError: (error) => {
+    set({ buildError: error, isBuilding: false })
+  },
+
   reset: () => {
     set({
+      projectName: '',
+      projectDescription: '',
+      projectFeatures: [],
+      projectStack: [],
       currentStep: 'briefing',
       stepProgress: 0,
       sprints: [],
       currentSprintIndex: 0,
       agents: INITIAL_AGENTS,
       agentInteractions: [],
+      buildId: null,
+      isBuilding: false,
+      buildError: null,
     })
   },
 }))

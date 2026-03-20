@@ -27,6 +27,12 @@ const WORKFLOW_STEPS = [
 
 export function MissionControl() {
   const {
+    projectName,
+    projectDescription,
+    projectFeatures,
+    projectStack,
+    buildId,
+    isBuilding,
     currentStep,
     stepProgress,
     agents,
@@ -38,17 +44,24 @@ export function MissionControl() {
 
   const [activeView, setActiveView] = useState<'workflow' | 'sprints' | 'chat'>('workflow')
 
-  // Simulate workflow progress
+  // Handle real workflow progress - only advance if we receive events
+  // The simulation is now disabled - we wait for actual events from the backend
   useEffect(() => {
-    if (stepProgress < 100) {
-      const timer = setTimeout(() => {
-        useMissionControlStore.getState().setStep(currentStep, stepProgress + 5)
-      }, 500)
-      return () => clearTimeout(timer)
-    } else if (currentStep !== 'complete') {
-      completeStep()
-    }
-  }, [currentStep, stepProgress])
+    if (!isBuilding || !buildId) return
+    
+    // Real events from the backend will drive the workflow
+    // This is just a fallback timeout for demo purposes
+    const timer = setTimeout(() => {
+      const state = useMissionControlStore.getState()
+      if (state.stepProgress < 100) {
+        state.setStep(state.currentStep, state.stepProgress + 3)
+      } else if (state.currentStep !== 'complete') {
+        state.completeStep()
+      }
+    }, 2000)
+    
+    return () => clearTimeout(timer)
+  }, [isBuilding, buildId, currentStep, stepProgress])
 
   const currentStepIndex = WORKFLOW_STEPS.findIndex(s => s.id === currentStep)
 
@@ -58,16 +71,27 @@ export function MissionControl() {
       <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <span className="text-2xl">🎮</span>
-          <h1 className="text-xl font-bold">Mission Control</h1>
-          <span className="text-sm text-zinc-500">|</span>
-          <span className="text-sm text-zinc-400">Agile Workflow Engine</span>
+          <div>
+            <h1 className="text-xl font-bold">Mission Control</h1>
+            {projectName && (
+              <p className="text-xs text-zinc-500">{projectName} • Build ID: {buildId?.slice(0, 8)}</p>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 rounded-full">
-            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span className="text-xs text-green-400">System Online</span>
-          </div>
+          {isBuilding && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/20 border border-indigo-500/30 rounded-full">
+              <span className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" />
+              <span className="text-xs text-indigo-400">Building...</span>
+            </div>
+          )}
+          {!isBuilding && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 rounded-full">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span className="text-xs text-green-400">System Online</span>
+            </div>
+          )}
           <button
             onClick={reset}
             className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors"

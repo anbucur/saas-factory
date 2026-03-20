@@ -46,15 +46,22 @@ app.get('/api/health', async (c) => {
 
 // Start a new build — launches a Temporal workflow when available
 app.post('/api/builds', async (c) => {
-  const body = await c.req.json<{ name: string; description: string; features?: string[] }>()
+  const body = await c.req.json<{ 
+    name: string; 
+    description: string; 
+    features?: string[];
+    stack?: string[];
+  }>()
   const buildId = crypto.randomUUID()
 
   console.log(`[API] POST /api/builds - ${body.name} (${buildId})`)
+  console.log(`[API] Features: ${body.features?.join(', ') || 'none'}`)
+  console.log(`[API] Stack: ${body.stack?.join(', ') || 'default'}`)
 
   // Broadcast immediately so the UI shows the build as started
   broadcast({
     type: 'build:started',
-    payload: { buildId, name: body.name, description: body.description },
+    payload: { buildId, name: body.name, description: body.description, features: body.features, stack: body.stack },
   })
   console.log(`[API] Broadcasted build:started to ${clients.size} clients`)
 
@@ -68,6 +75,7 @@ app.post('/api/builds', async (c) => {
           name: body.name,
           description: body.description,
           features: body.features ?? [],
+          stack: body.stack ?? ['react', 'node', 'postgres'],
           billingMode: 'none',
         },
       ],

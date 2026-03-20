@@ -1,12 +1,20 @@
 /**
  * SaaS Factory - Main App
  * 
- * Uses MissionControl for the new step-by-step workflow UI
+ * Shows ProjectSetup first, then MissionControl after project is configured
  */
 
+import { useState } from 'react'
 import { MissionControl } from './components/MissionControl'
+import { ProjectSetup } from './components/ProjectSetup'
 
 function App() {
+  const [projectStarted, setProjectStarted] = useState(false)
+
+  if (!projectStarted) {
+    return <ProjectSetup onComplete={() => setProjectStarted(true)} />
+  }
+
   return <MissionControl />
 }
 
