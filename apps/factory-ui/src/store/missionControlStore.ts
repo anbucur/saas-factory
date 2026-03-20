@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentType, LogEntry, PhaseId, Project } from '../types'
+import type { Project } from '../types'
 
 // Types for the new workflow
 export type WorkflowStep = 
@@ -88,14 +88,14 @@ export interface MissionControlState {
 }
 
 const INITIAL_AGENTS: PixelAgent[] = [
-  { id: 'pm', name: 'Product Manager', role: 'pm', x: 10, y: 50, status: 'idle', color: '#6366f1', emoji: '👔' },
-  { id: 'ba1', name: 'BA Sarah', role: 'ba1', x: 25, y: 30, status: 'idle', color: '#8b5cf6', emoji: '📋' },
-  { id: 'ba2', name: 'BA Mike', role: 'ba2', x: 25, y: 70, status: 'idle', color: '#8b5cf6', emoji: '📋' },
-  { id: 'architect', name: 'Solutions Architect', role: 'architect', x: 40, y: 50, status: 'idle', color: '#14b8a6', emoji: '🏗️' },
-  { id: 'dev1', name: 'Dev Alex', role: 'dev1', x: 55, y: 30, status: 'idle', color: '#22c55e', emoji: '💻' },
-  { id: 'dev2', name: 'Dev Jordan', role: 'dev2', x: 55, y: 70, status: 'idle', color: '#22c55e', emoji: '💻' },
-  { id: 'qa1', name: 'QA Tester', role: 'qa1', x: 75, y: 40, status: 'idle', color: '#f59e0b', emoji: '🧪' },
-  { id: 'qa2', name: 'QA Lead', role: 'qa2', x: 75, y: 60, status: 'idle', color: '#f59e0b', emoji: '🧪' },
+  { id: 'pm', name: 'Product Manager', role: 'pm', x: 10, y: 50, status: 'idle', progress: 0, color: '#6366f1', emoji: '👔' },
+  { id: 'ba1', name: 'BA Sarah', role: 'ba1', x: 25, y: 30, status: 'idle', progress: 0, color: '#8b5cf6', emoji: '📋' },
+  { id: 'ba2', name: 'BA Mike', role: 'ba2', x: 25, y: 70, status: 'idle', progress: 0, color: '#8b5cf6', emoji: '📋' },
+  { id: 'architect', name: 'Solutions Architect', role: 'architect', x: 40, y: 50, status: 'idle', progress: 0, color: '#14b8a6', emoji: '🏗️' },
+  { id: 'dev1', name: 'Dev Alex', role: 'dev1', x: 55, y: 30, status: 'idle', progress: 0, color: '#22c55e', emoji: '💻' },
+  { id: 'dev2', name: 'Dev Jordan', role: 'dev2', x: 55, y: 70, status: 'idle', progress: 0, color: '#22c55e', emoji: '💻' },
+  { id: 'qa1', name: 'QA Tester', role: 'qa1', x: 75, y: 40, status: 'idle', progress: 0, color: '#f59e0b', emoji: '🧪' },
+  { id: 'qa2', name: 'QA Lead', role: 'qa2', x: 75, y: 60, status: 'idle', progress: 0, color: '#f59e0b', emoji: '🧪' },
 ]
 
 export const useMissionControlStore = create<MissionControlState>((set, get) => ({

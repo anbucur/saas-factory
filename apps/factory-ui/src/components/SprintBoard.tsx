@@ -5,7 +5,7 @@
 import { useMissionControlStore } from '../store/missionControlStore'
 
 export function SprintBoard() {
-  const { sprints, currentSprintIndex, updateSprintTask } = useMissionControlStore()
+  const { sprints, updateSprintTask } = useMissionControlStore()
 
   // Demo sprints if none exist
   const demoSprints = sprints.length > 0 ? sprints : [

@@ -91,7 +91,8 @@ const DEMO_MESSAGES: Message[] = [
 ]
 
 export function AgentChat() {
-  const { agents } = useMissionControlStore()
+  // agents from store can be used to show real-time agent status
+  const { agents: _agents } = useMissionControlStore()
   const [messages, setMessages] = useState<Message[]>(DEMO_MESSAGES)
   const [newMessage, setNewMessage] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)

@@ -47,21 +47,34 @@ app.get('/api/health', async (c) => {
 // Start a new build — launches a Temporal workflow when available
 app.post('/api/builds', async (c) => {
   const body = await c.req.json<{ 
-    name: string; 
-    description: string; 
+    name?: string; 
+    description?: string; 
     features?: string[];
     stack?: string[];
   }>()
-  const buildId = crypto.randomUUID()
 
-  console.log(`[API] POST /api/builds - ${body.name} (${buildId})`)
+  // Input validation
+  if (!body.name?.trim()) {
+    return c.json({ error: 'Project name is required' }, 400)
+  }
+  if (body.name.length > 100) {
+    return c.json({ error: 'Project name must be 100 characters or less' }, 400)
+  }
+  if (body.description && body.description.length > 2000) {
+    return c.json({ error: 'Description must be 2000 characters or less' }, 400)
+  }
+
+  const buildId = crypto.randomUUID()
+  const name = body.name.trim()
+
+  console.log(`[API] POST /api/builds - ${name} (${buildId})`)
   console.log(`[API] Features: ${body.features?.join(', ') || 'none'}`)
   console.log(`[API] Stack: ${body.stack?.join(', ') || 'default'}`)
 
   // Broadcast immediately so the UI shows the build as started
   broadcast({
     type: 'build:started',
-    payload: { buildId, name: body.name, description: body.description, features: body.features, stack: body.stack },
+    payload: { buildId, name, description: body.description || '', features: body.features || [], stack: body.stack || [] },
   })
   console.log(`[API] Broadcasted build:started to ${clients.size} clients`)
 
@@ -72,17 +85,17 @@ app.post('/api/builds', async (c) => {
       workflowId: buildId,
       args: [
         {
-          name: body.name,
-          description: body.description,
+          name,
+          description: body.description?.trim() || '',
           features: body.features ?? [],
           stack: body.stack ?? ['react', 'node', 'postgres'],
           billingMode: 'none',
         },
       ],
     })
-    console.log(`▶  Temporal workflow started  ${buildId}: ${body.name}`)
+    console.log(`▶  Temporal workflow started  ${buildId}: ${name}`)
   } else {
-    console.log(`⚠️  Simulating build (Temporal unavailable)  ${buildId}: ${body.name}`)
+    console.log(`⚠️  Simulating build (Temporal unavailable)  ${buildId}: ${name}`)
   }
 
   return c.json({ buildId, status: 'started' })

@@ -1,18 +1,18 @@
 /**
  * SaaS Factory - Main App
  * 
- * Shows ProjectSetup first, then MissionControl after project is configured
+ * Uses the factoryStore which has proper WebSocket event handling
  */
 
-import { useState } from 'react'
+import { useFactoryStore } from './store/factoryStore'
 import { MissionControl } from './components/MissionControl'
 import { ProjectSetup } from './components/ProjectSetup'
 
 function App() {
-  const [projectStarted, setProjectStarted] = useState(false)
+  const { project } = useFactoryStore()
 
-  if (!projectStarted) {
-    return <ProjectSetup onComplete={() => setProjectStarted(true)} />
+  if (!project) {
+    return <ProjectSetup />
   }
 
   return <MissionControl />

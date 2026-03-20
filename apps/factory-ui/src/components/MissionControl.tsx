@@ -2,68 +2,23 @@
  * Mission Control - Main workflow visualization
  * 
  * Shows:
- * - Current workflow step (step-by-step, not all at once)
+ * - Current workflow step (step-by-step)
  * - Pixel agents that move and interact
  * - Sprint/task management
  * - Real-time progress
  */
 
-import { useEffect, useState } from 'react'
-import { useMissionControlStore } from '../store/missionControlStore'
+import { useState } from 'react'
+import { useFactoryStore } from '../store/factoryStore'
 import { PixelAgent } from './PixelAgent'
 import { SprintBoard } from './SprintBoard'
 import { AgentChat } from './AgentChat'
 
-const WORKFLOW_STEPS = [
-  { id: 'briefing', label: '📢 Briefing', description: 'PM briefs the team', duration: '2 min' },
-  { id: 'requirements', label: '📝 Requirements', description: 'BAs document specs', duration: '5 min' },
-  { id: 'analysis', label: '🔍 Analysis', description: 'Requirements analysis', duration: '3 min' },
-  { id: 'architecture', label: '🏗️ Architecture', description: 'Tech stack & planning', duration: '5 min' },
-  { id: 'development', label: '💻 Development', description: 'Building features', duration: '15 min' },
-  { id: 'review', label: '👀 Code Review', description: 'Peer review', duration: '5 min' },
-  { id: 'qa', label: '🧪 QA Testing', description: 'Test & fix bugs', duration: '10 min' },
-  { id: 'complete', label: '✅ Complete', description: 'Ready for next phase', duration: '-' },
-]
-
 export function MissionControl() {
-  const {
-    projectName,
-    projectDescription,
-    projectFeatures,
-    projectStack,
-    buildId,
-    isBuilding,
-    currentStep,
-    stepProgress,
-    agents,
-    sprints,
-    setStep,
-    completeStep,
-    reset,
-  } = useMissionControlStore()
-
+  const { project, agents, resetProject } = useFactoryStore()
   const [activeView, setActiveView] = useState<'workflow' | 'sprints' | 'chat'>('workflow')
 
-  // Handle real workflow progress - only advance if we receive events
-  // The simulation is now disabled - we wait for actual events from the backend
-  useEffect(() => {
-    if (!isBuilding || !buildId) return
-    
-    // Real events from the backend will drive the workflow
-    // This is just a fallback timeout for demo purposes
-    const timer = setTimeout(() => {
-      const state = useMissionControlStore.getState()
-      if (state.stepProgress < 100) {
-        state.setStep(state.currentStep, state.stepProgress + 3)
-      } else if (state.currentStep !== 'complete') {
-        state.completeStep()
-      }
-    }, 2000)
-    
-    return () => clearTimeout(timer)
-  }, [isBuilding, buildId, currentStep, stepProgress])
-
-  const currentStepIndex = WORKFLOW_STEPS.findIndex(s => s.id === currentStep)
+  if (!project) return null
 
   return (
     <div className="h-full flex flex-col bg-zinc-950 text-zinc-100">
@@ -73,27 +28,17 @@ export function MissionControl() {
           <span className="text-2xl">🎮</span>
           <div>
             <h1 className="text-xl font-bold">Mission Control</h1>
-            {projectName && (
-              <p className="text-xs text-zinc-500">{projectName} • Build ID: {buildId?.slice(0, 8)}</p>
-            )}
+            <p className="text-xs text-zinc-500">{project.name}</p>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
-          {isBuilding && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/20 border border-indigo-500/30 rounded-full">
-              <span className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" />
-              <span className="text-xs text-indigo-400">Building...</span>
-            </div>
-          )}
-          {!isBuilding && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 rounded-full">
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-xs text-green-400">System Online</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/20 border border-indigo-500/30 rounded-full">
+            <span className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" />
+            <span className="text-xs text-indigo-400">Building...</span>
+          </div>
           <button
-            onClick={reset}
+            onClick={resetProject}
             className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors"
           >
             🔄 Reset
@@ -103,54 +48,30 @@ export function MissionControl() {
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left panel - Workflow steps */}
+        {/* Left panel - Phases */}
         <div className="w-72 border-r border-zinc-800 flex flex-col shrink-0">
           <div className="p-4 border-b border-zinc-800">
-            <h2 className="text-sm font-semibold text-zinc-300">Workflow Steps</h2>
+            <h2 className="text-sm font-semibold text-zinc-300">Development Phases</h2>
           </div>
           
           <div className="flex-1 overflow-y-auto p-2">
-            {WORKFLOW_STEPS.map((step, index) => {
-              const isActive = step.id === currentStep
-              const isComplete = index < currentStepIndex
-              const isPending = index > currentStepIndex
-              
-              return (
-                <button
-                  key={step.id}
-                  onClick={() => isComplete || isPending ? setStep(step.id as typeof currentStep) : undefined}
-                  disabled={isPending}
-                  className={`
-                    w-full text-left p-3 rounded-lg mb-1 transition-all
-                    ${isActive ? 'bg-indigo-600/30 border border-indigo-500/50' : ''}
-                    ${isComplete ? 'bg-green-500/10 border border-green-500/30' : ''}
-                    ${isPending ? 'bg-zinc-900/50 opacity-50' : ''}
-                  `}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{step.label}</span>
-                    {isComplete && <span className="text-green-400 text-xs">✓</span>}
-                    {isActive && (
-                      <span className="ml-auto">
-                        <span className="inline-block w-2 h-2 bg-indigo-400 rounded-full animate-pulse" />
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-1">{step.description}</p>
-                  {isActive && (
-                    <div className="mt-2">
-                      <div className="h-1 bg-zinc-700 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-indigo-500 transition-all duration-300"
-                          style={{ width: `${stepProgress}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-zinc-500 mt-1">{step.duration}</p>
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+            {project.phases.map((phase, index) => (
+              <div
+                key={phase.id}
+                className={`
+                  w-full text-left p-3 rounded-lg mb-1 transition-all
+                  ${phase.status === 'active' ? 'bg-indigo-600/30 border border-indigo-500/50' : ''}
+                  ${phase.status === 'complete' ? 'bg-green-500/10 border border-green-500/30' : ''}
+                  ${phase.status === 'locked' ? 'bg-zinc-900/50 opacity-50' : ''}
+                `}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{phase.status === 'complete' ? '✅' : phase.status === 'active' ? '🔥' : '🔒'}</span>
+                  <span className="text-sm font-medium">{phase.label}</span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">{phase.description}</p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -194,34 +115,26 @@ export function MissionControl() {
                   backgroundSize: '30px 30px',
                 }} />
                 
-                {/* Workflow lanes */}
-                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-64">
-                  {/* Lane labels */}
-                  <div className="absolute left-4 top-0 text-xs text-zinc-600">STRATEGY</div>
-                  <div className="absolute left-4 top-1/4 text-xs text-zinc-600">PLANNING</div>
-                  <div className="absolute left-4 top-1/2 text-xs text-zinc-600">DEVELOPMENT</div>
-                  <div className="absolute left-4 top-3/4 text-xs text-zinc-600">TESTING</div>
-                  
-                  {/* Progress line */}
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full h-0.5 bg-zinc-800 relative">
-                      <div 
-                        className="absolute top-0 left-0 h-full bg-indigo-500 transition-all duration-500"
-                        style={{ width: `${(currentStepIndex / (WORKFLOW_STEPS.length - 1)) * 100}%` }}
+                {/* Progress line */}
+                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2">
+                  <div className="h-0.5 bg-zinc-800 mx-8 relative">
+                    {/* Completed portion */}
+                    <div 
+                      className="absolute top-0 left-0 h-full bg-indigo-500"
+                      style={{ width: `${(project.phases.findIndex(p => p.status === 'active') / Math.max(project.phases.length - 1, 1)) * 100}%` }}
+                    />
+                    {/* Phase markers */}
+                    {project.phases.map((phase, i) => (
+                      <div
+                        key={phase.id}
+                        className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 transition-all ${
+                          phase.status === 'complete' ? 'bg-green-500 border-green-400' :
+                          phase.status === 'active' ? 'bg-indigo-500 border-indigo-400' :
+                          'bg-zinc-900 border-zinc-700'
+                        }`}
+                        style={{ left: `${(i / (project.phases.length - 1)) * 100}%` }}
                       />
-                      {/* Step markers */}
-                      {WORKFLOW_STEPS.slice(0, -1).map((step, i) => (
-                        <div
-                          key={step.id}
-                          className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 transition-all ${
-                            i < currentStepIndex ? 'bg-green-500 border-green-400' :
-                            i === currentStepIndex ? 'bg-indigo-500 border-indigo-400 animate-pulse' :
-                            'bg-zinc-900 border-zinc-700'
-                          }`}
-                          style={{ left: `${(i / (WORKFLOW_STEPS.length - 2)) * 100}%` }}
-                        />
-                      ))}
-                    </div>
+                    ))}
                   </div>
                 </div>
 
@@ -231,13 +144,6 @@ export function MissionControl() {
                     <PixelAgent key={agent.id} agent={agent} />
                   ))}
                 </div>
-
-                {/* Current step indicator */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-zinc-900/90 border border-zinc-700 rounded-lg px-4 py-2">
-                  <p className="text-sm text-zinc-300">
-                    {WORKFLOW_STEPS[currentStepIndex]?.description}
-                  </p>
-                </div>
               </div>
             )}
 
@@ -246,42 +152,28 @@ export function MissionControl() {
           </div>
         </div>
 
-        {/* Right panel - Current task details */}
+        {/* Right panel - Logs */}
         <div className="w-80 border-l border-zinc-800 flex flex-col shrink-0">
           <div className="p-4 border-b border-zinc-800">
-            <h2 className="text-sm font-semibold text-zinc-300">Active Tasks</h2>
+            <h2 className="text-sm font-semibold text-zinc-300">Activity Log</h2>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4">
-            {agents.filter(a => a.status === 'working' || a.status === 'talking').map(agent => (
-              <div key={agent.id} className="mb-3 p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{agent.emoji}</span>
-                  <span className="text-sm font-medium">{agent.name}</span>
-                </div>
-                <p className="text-xs text-zinc-400 mt-1">{agent.currentTask}</p>
-                <div className="mt-2 h-1 bg-zinc-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-indigo-500 transition-all"
-                    style={{ width: `${agent.progress}%` }}
-                  />
-                </div>
+            {project.logs.slice(-20).reverse().map(log => (
+              <div key={log.id} className="mb-2 text-xs">
+                <span className="text-zinc-500">[{new Date(log.timestamp).toLocaleTimeString()}]</span>{' '}
+                <span className={
+                  log.type === 'error' ? 'text-red-400' :
+                  log.type === 'success' ? 'text-green-400' :
+                  log.type === 'warning' ? 'text-amber-400' :
+                  'text-zinc-300'
+                }>
+                  {log.message}
+                </span>
               </div>
             ))}
-            
-            {agents.filter(a => a.status === 'idle').length > 0 && (
-              <>
-                <h3 className="text-xs text-zinc-500 mt-4 mb-2">Idle Agents</h3>
-                {agents.filter(a => a.status === 'idle').map(agent => (
-                  <div key={agent.id} className="mb-2 p-2 bg-zinc-900/30 rounded border border-zinc-800/50">
-                    <div className="flex items-center gap-2">
-                      <span>{agent.emoji}</span>
-                      <span className="text-xs text-zinc-500">{agent.name}</span>
-                      <span className="ml-auto text-xs text-zinc-600">💤</span>
-                    </div>
-                  </div>
-                ))}
-              </>
+            {project.logs.length === 0 && (
+              <p className="text-xs text-zinc-500">No activity yet...</p>
             )}
           </div>
         </div>

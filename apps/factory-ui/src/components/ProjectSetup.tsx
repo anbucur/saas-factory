@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react'
-import { useMissionControlStore } from '../store/missionControlStore'
+import { useFactoryStore } from '../store/factoryStore'
 
 interface ProjectSetupProps {
   onComplete: () => void
@@ -42,7 +42,7 @@ const FEATURE_SUGGESTIONS = [
 ]
 
 export function ProjectSetup({ onComplete }: ProjectSetupProps) {
-  const { setProjectInfo, setBuilding } = useMissionControlStore()
+  const { startProject } = useFactoryStore()
   
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -51,6 +51,7 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps) {
   const [newFeature, setNewFeature] = useState('')
   const [step, setFormStep] = useState(1)
   const [isStarting, setIsStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const toggleStack = (id: string) => {
     setSelectedStack(prev => 
@@ -71,12 +72,12 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps) {
 
   const handleStart = async () => {
     if (!name.trim()) {
-      alert('Please enter a project name')
+      setError('Please enter a project name')
       return
     }
 
     setIsStarting(true)
-    setBuilding(true)
+    setError(null)
 
     try {
       // Submit to backend to start the REAL workflow
@@ -92,23 +93,22 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps) {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        const errData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errData.error || `HTTP ${response.status}`)
       }
 
       const data = await response.json()
       console.log('[ProjectSetup] Build started:', data)
       
-      // Set project info in store
-      setProjectInfo(name.trim(), description.trim(), customFeatures, selectedStack)
-      setBuilding(true, data.buildId)
+      // Start the project in the store
+      startProject(name.trim(), description.trim())
       
       // Start the workflow
       onComplete()
-    } catch (error) {
-      console.error('[ProjectSetup] Failed to start build:', error)
-      alert(`Failed to start project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } catch (err) {
+      console.error('[ProjectSetup] Failed to start build:', err)
+      setError(err instanceof Error ? err.message : 'Failed to start project')
       setIsStarting(false)
-      setBuilding(false)
     }
   }
 
@@ -147,6 +147,12 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps) {
 
         {/* Form content */}
         <div className="p-8">
+          {error && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+          
           {/* Step 1: Basics */}
           {step === 1 && (
             <div className="space-y-6">
@@ -177,7 +183,7 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps) {
               </div>
 
               <button
-                onClick={() => name.trim() && setStep(2)}
+                onClick={() => name.trim() && setFormStep(2)}
                 disabled={!name.trim()}
                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg font-medium transition-colors"
               >
@@ -220,13 +226,13 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps) {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep(1)}
+                  onClick={() => setFormStep(1)}
                   className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg font-medium transition-colors"
                 >
                   ← Back
                 </button>
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setFormStep(3)}
                   disabled={selectedStack.length === 0}
                   className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg font-medium transition-colors"
                 >
@@ -301,7 +307,7 @@ export function ProjectSetup({ onComplete }: ProjectSetupProps) {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => setFormStep(2)}
                   className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg font-medium transition-colors"
                 >
                   ← Back

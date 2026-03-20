@@ -86,13 +86,7 @@ const AGENT_SPRITES: Record<string, string[]> = {
 }
 
 export function PixelAgent({ agent }: PixelAgentProps) {
-  const [position, setPosition] = useState({ x: agent.x, y: agent.y })
   const [bounce, setBounce] = useState(false)
-
-  // Animate position changes smoothly
-  useEffect(() => {
-    setPosition({ x: agent.x, y: agent.y })
-  }, [agent.x, agent.y])
 
   // Bounce animation when working
   useEffect(() => {
@@ -107,11 +101,11 @@ export function PixelAgent({ agent }: PixelAgentProps) {
   }, [agent.status])
 
   // Talking animation
-  const [talkFrame, setTalkFrame] = useState(0)
   useEffect(() => {
     if (agent.status === 'talking') {
       const interval = setInterval(() => {
-        setTalkFrame(f => (f + 1) % 2)
+        // Just animate - don't need to track frame
+      }, 200)
       }, 200)
       return () => clearInterval(interval)
     }
