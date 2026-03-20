@@ -44,7 +44,7 @@ export function BuildModal({ isOpen, onClose }: BuildModalProps) {
       useFactoryStore.getState().startProject(name.trim(), description.trim())
 
       // POST to the API
-      await fetch('http://localhost:3001/api/builds', {
+      await fetch('http://localhost:3010/api/builds', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

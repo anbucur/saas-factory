@@ -12,7 +12,9 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "dev:ui": "npm run dev --workspace=apps/factory-ui",
-    "dev:backend": "npm run dev --workspace=apps/factory-backend"
+    "dev:backend": "npm run dev --workspace=apps/factory-backend",
+    "test": "turbo test",
+    "test:run": "turbo test:run"
   },
   "devDependencies": {
     "turbo": "^2.3.0",

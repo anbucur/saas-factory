@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { WebSocketServer, WebSocket } from 'ws'
+import { Client, Connection } from '@temporalio/client'
 
 const app = new Hono()
 
@@ -21,23 +22,57 @@ function broadcast(event: object) {
   })
 }
 
-// Health check
-app.get('/api/health', (c) => c.json({ status: 'ok', temporal: 'connected' }))
+// Temporal client — created lazily so the backend still starts if Temporal is down
+let temporalClient: Client | null = null
 
-// Start a new build
+async function getTemporalClient(): Promise<Client | null> {
+  if (temporalClient) return temporalClient
+  try {
+    const connection = await Connection.connect({ address: 'localhost:7233' })
+    temporalClient = new Client({ connection })
+    console.log('✅ Temporal client connected')
+    return temporalClient
+  } catch (err) {
+    console.warn('⚠️  Temporal unavailable — builds will broadcast start event only:', err)
+    return null
+  }
+}
+
+// Health check — reflects live Temporal connectivity
+app.get('/api/health', async (c) => {
+  const client = await getTemporalClient()
+  return c.json({ status: 'ok', temporal: client ? 'connected' : 'unavailable' })
+})
+
+// Start a new build — launches a Temporal workflow when available
 app.post('/api/builds', async (c) => {
-  const body = await c.req.json<{ name: string; description: string }>()
+  const body = await c.req.json<{ name: string; description: string; features?: string[] }>()
   const buildId = crypto.randomUUID()
 
-  // In production, this would start a Temporal workflow
-  // For now, simulate the process
-  console.log(`Starting build ${buildId}: ${body.name}`)
-
-  // Broadcast build started
+  // Broadcast immediately so the UI shows the build as started
   broadcast({
     type: 'build:started',
     payload: { buildId, name: body.name, description: body.description },
   })
+
+  const client = await getTemporalClient()
+  if (client) {
+    await client.workflow.start('buildSaaS', {
+      taskQueue: 'factory-builds',
+      workflowId: buildId,
+      args: [
+        {
+          name: body.name,
+          description: body.description,
+          features: body.features ?? [],
+          billingMode: 'none',
+        },
+      ],
+    })
+    console.log(`▶  Temporal workflow started  ${buildId}: ${body.name}`)
+  } else {
+    console.log(`⚠️  Simulating build (Temporal unavailable)  ${buildId}: ${body.name}`)
+  }
 
   return c.json({ buildId, status: 'started' })
 })
@@ -75,7 +110,7 @@ if (process.env.NODE_ENV === 'production') {
   })
 }
 
-const port = 3001
+const port = 3010
 console.log(`🚀 Factory Backend running on http://localhost:${port}`)
 
 // Start HTTP server and attach WebSocket handler

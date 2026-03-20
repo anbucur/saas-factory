@@ -1,151 +1,106 @@
 /**
- * Temporal Activities - These are the actual work units performed by agents
- * Each activity maps to a specific agent in the factory
+ * Temporal Activity stubs — type contracts for the buildSaaS workflow.
+ * Actual implementations live in apps/factory-backend/src/worker.ts.
  */
 
-export interface ScaffoldAppInput {
+// ── generateSpec ────────────────────────────────────────────────────────────
+
+export interface GenerateSpecInput {
   name: string
   description: string
   features: string[]
+  buildId: string
 }
 
-export interface ScaffoldAppOutput {
-  appId: string
-  repoUrl: string
+export interface GenerateSpecOutput {
+  spec: string
+  tokens: number
+}
+
+export async function generateSpec(_input: GenerateSpecInput): Promise<GenerateSpecOutput> {
+  throw new Error('Activity stub — implemented in worker')
+}
+
+// ── scaffoldProject ──────────────────────────────────────────────────────────
+
+export interface ScaffoldProjectInput {
+  projectName: string
+  spec: string
+  buildId: string
+}
+
+export interface ScaffoldProjectOutput {
+  projectPath: string
   stack: string[]
 }
 
-export async function scaffoldApp(input: ScaffoldAppInput): Promise<ScaffoldAppOutput> {
-  // This would call Z.ai or another coding agent
-  // For now, simulate the work
-  console.log(`[Coder] Scaffolding: ${input.name}`)
-  await new Promise((r) => setTimeout(r, 2000))
-
-  return {
-    appId: `app-${crypto.randomUUID().slice(0, 8)}`,
-    repoUrl: `https://github.com/example/${input.name.toLowerCase().replace(/\s+/g, '-')}`,
-    stack: ['React', 'Node.js', 'Postgres'],
-  }
+export async function scaffoldProject(
+  _input: ScaffoldProjectInput
+): Promise<ScaffoldProjectOutput> {
+  throw new Error('Activity stub — implemented in worker')
 }
 
+// ── writeCode ────────────────────────────────────────────────────────────────
+
+export interface WriteCodeInput {
+  projectPath: string
+  spec: string
+  buildId: string
+}
+
+export interface WriteCodeOutput {
+  files: string[]
+}
+
+export async function writeCode(_input: WriteCodeInput): Promise<WriteCodeOutput> {
+  throw new Error('Activity stub — implemented in worker')
+}
+
+// ── buildUI ──────────────────────────────────────────────────────────────────
+
 export interface BuildUIInput {
-  appId: string
+  projectPath: string
+  buildId: string
 }
 
 export interface BuildUIOutput {
   components: number
   pages: string[]
+  buildPath: string
 }
 
-export async function buildUI(input: BuildUIInput): Promise<BuildUIOutput> {
-  console.log(`[UI Agent] Building interface for: ${input.appId}`)
-  await new Promise((r) => setTimeout(r, 1500))
-
-  return {
-    components: 24,
-    pages: ['Dashboard', 'Settings', 'Billing', 'Profile'],
-  }
+export async function buildUI(_input: BuildUIInput): Promise<BuildUIOutput> {
+  throw new Error('Activity stub — implemented in worker')
 }
 
-export interface EnhanceFeatureInput {
-  appId: string
-  feature: string
+// ── runTests ─────────────────────────────────────────────────────────────────
+
+export interface RunTestsInput {
+  projectPath: string
+  buildId: string
 }
 
-export interface EnhanceFeatureOutput {
-  status: 'enhanced'
-  changes: number
+export interface RunTestsOutput {
+  passed: boolean
+  checks: string[]
 }
 
-export async function enhanceFeatures(
-  input: EnhanceFeatureInput
-): Promise<EnhanceFeatureOutput> {
-  console.log(`[Enhancement Agent] Enhancing: ${input.feature}`)
-  await new Promise((r) => setTimeout(r, 1000))
-
-  return {
-    status: 'enhanced',
-    changes: Math.floor(Math.random() * 10) + 1,
-  }
+export async function runTests(_input: RunTestsInput): Promise<RunTestsOutput> {
+  throw new Error('Activity stub — implemented in worker')
 }
 
-export interface SecurityScanInput {
-  appId: string
+// ── deploy ───────────────────────────────────────────────────────────────────
+
+export interface DeployInput {
+  projectName: string
+  buildId: string
 }
 
-export interface SecurityIssue {
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  type: string
-  description: string
-  file?: string
-}
-
-export interface SecurityScanOutput {
-  scannedAt: number
-  issues: SecurityIssue[]
-}
-
-export async function securityScan(input: SecurityScanInput): Promise<SecurityScanOutput> {
-  console.log(`[Security Agent] Scanning: ${input.appId}`)
-  await new Promise((r) => setTimeout(r, 2000))
-
-  // Simulate finding some issues
-  const issues: SecurityIssue[] = []
-  if (Math.random() > 0.5) {
-    issues.push({
-      severity: 'medium',
-      type: 'XSS',
-      description: 'Potential XSS in user input',
-      file: 'src/components/UserInput.tsx',
-    })
-  }
-
-  return {
-    scannedAt: Date.now(),
-    issues,
-  }
-}
-
-export interface FixSecurityIssuesInput {
-  appId: string
-  issues: SecurityIssue[]
-}
-
-export async function fixSecurityIssues(input: FixSecurityIssuesInput): Promise<{ fixed: number }> {
-  console.log(`[Security Agent] Fixing ${input.issues.length} issues`)
-  await new Promise((r) => setTimeout(r, 1500))
-
-  return { fixed: input.issues.length }
-}
-
-export interface InjectBillingInput {
-  appId: string
-  mode: 'subscription' | 'usage' | 'none'
-}
-
-export async function injectBilling(input: InjectBillingInput): Promise<{ stripeMode: string }> {
-  console.log(`[Billing Agent] Injecting ${input.mode} billing`)
-  await new Promise((r) => setTimeout(r, 1500))
-
-  return { stripeMode: input.mode }
-}
-
-export interface DeployAppInput {
-  appId: string
-}
-
-export interface DeployAppOutput {
+export interface DeployOutput {
   url: string
   region: string
 }
 
-export async function deployApp(input: DeployAppInput): Promise<DeployAppOutput> {
-  console.log(`[Deploy Agent] Deploying: ${input.appId}`)
-  await new Promise((r) => setTimeout(r, 3000))
-
-  const id = input.appId.slice(4)
-  return {
-    url: `https://${id}.fly.dev`,
-    region: 'ams',
-  }
+export async function deploy(_input: DeployInput): Promise<DeployOutput> {
+  throw new Error('Activity stub — implemented in worker')
 }

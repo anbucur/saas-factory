@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFactoryStore } from '../store/factoryStore'
 import type { AgentType, LogEntry, PhaseId } from '../types'
 
-const WS_URL = 'ws://localhost:3001/ws'
+const WS_URL = 'ws://localhost:3010/ws'
 const MAX_RECONNECT_DELAY = 30000
 const MAX_RECONNECT_ATTEMPTS = 10
 

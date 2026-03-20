@@ -5,7 +5,6 @@
 
 import { createRequire } from 'node:module'
 import { Worker } from '@temporalio/worker'
-import { buildSaaS, BuildSpec, BuildResult } from '@saas-factory/temporal-workflows'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { exec } from 'node:child_process'
@@ -38,6 +37,7 @@ export interface GenerateSpecInput {
   name: string
   description: string
   features: string[]
+  buildId: string
 }
 
 export interface GenerateSpecOutput {
@@ -48,6 +48,7 @@ export interface GenerateSpecOutput {
 export interface ScaffoldProjectInput {
   projectName: string
   spec: string
+  buildId: string
 }
 
 export interface ScaffoldProjectOutput {
@@ -67,6 +68,7 @@ export interface WriteCodeOutput {
 
 export interface BuildUIInput {
   projectPath: string
+  buildId: string
 }
 
 export interface BuildUIOutput {
@@ -77,6 +79,7 @@ export interface BuildUIOutput {
 
 export interface RunTestsInput {
   projectPath: string
+  buildId: string
 }
 
 export interface RunTestsOutput {
@@ -98,7 +101,7 @@ export interface DeployOutput {
 // Event Broadcasting (Worker → Backend → WebSocket)
 // ============================================================================
 
-const BACKEND_URL = 'http://localhost:3001'
+const BACKEND_URL = 'http://localhost:3010'
 
 async function broadcastEvent(event: AgentEvent): Promise<void> {
   const payload = { ...event, timestamp: Date.now() }
@@ -113,15 +116,16 @@ async function broadcastEvent(event: AgentEvent): Promise<void> {
         body: JSON.stringify(payload),
       })
       if (res.ok) return
-      throw new Error(`HTTP ${res.status}`)
+      // Non-2xx — treat as transient failure
+      console.warn(`[Worker] Broadcast attempt ${attempt} failed: HTTP ${res.status}`)
     } catch (err) {
       if (attempt === maxRetries) {
         console.warn(`[Worker] Failed to broadcast event after ${maxRetries} attempts:`, err)
         return
       }
-      await new Promise((r) => setTimeout(r, delay))
-      delay *= 2
     }
+    await new Promise((r) => setTimeout(r, delay))
+    delay *= 2
   }
 }
 
@@ -163,7 +167,9 @@ async function generateWithLLM(
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`MiniMax API error ${response.status}: ${errorText}`)
+      const apiError = new Error(`MiniMax API error ${response.status}: ${errorText}`)
+      console.error(`[${buildId.slice(0, 8)}] LLM call failed:`, apiError)
+      throw apiError
     }
 
     const data = await response.json() as {
@@ -180,9 +186,6 @@ async function generateWithLLM(
     })
 
     return { content, tokens }
-  } catch (err) {
-    console.error(`[${buildId.slice(0, 8)}] LLM call failed:`, err)
-    throw err
   }
 }
 
@@ -191,9 +194,9 @@ async function generateWithLLM(
 // ============================================================================
 
 async function generateSpec(
-  input: GenerateSpecInput,
-  buildId: string
+  input: GenerateSpecInput
 ): Promise<GenerateSpecOutput> {
+  const buildId = input.buildId
   log(buildId, `Generating spec for: ${input.name}`)
 
   await broadcastEvent({
@@ -257,7 +260,6 @@ function generateSpecTemplate(
   features: string[]
 ): string {
   const kebabName = name.toLowerCase().replace(/\s+/g, '-')
-  const camelName = name.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase())
   const capitalizedName = name
     .split(/[\s-]+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -357,9 +359,9 @@ ${kebabName}/
 }
 
 async function scaffoldProject(
-  input: ScaffoldProjectInput,
-  buildId: string
+  input: ScaffoldProjectInput
 ): Promise<ScaffoldProjectOutput> {
+  const buildId = input.buildId
   log(buildId, `Scaffolding project: ${input.projectName}`)
 
   await broadcastEvent({
@@ -594,9 +596,9 @@ body {
 }
 
 async function writeCode(
-  input: WriteCodeInput,
-  buildId: string
+  input: WriteCodeInput
 ): Promise<WriteCodeOutput> {
+  const buildId = input.buildId
   log(buildId, `Writing code for project at: ${input.projectPath}`)
 
   await broadcastEvent({
@@ -689,212 +691,24 @@ Keep responses ONLY in this format. Do not include any other text.`
 }
 
 async function writeMinimalCode(projectPath: string, files: string[]): Promise<void> {
-  // Minimal App.tsx
-  const appContent = `import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import Settings from './pages/Settings'
+  const writes: Array<[string, string, string]> = [
+    [path.join(projectPath, 'src', 'App.tsx'),                        APP_TSX,       'src/App.tsx'],
+    [path.join(projectPath, 'src', 'pages', 'Dashboard.tsx'),         DASHBOARD_TSX, 'src/pages/Dashboard.tsx'],
+    [path.join(projectPath, 'src', 'pages', 'Settings.tsx'),          SETTINGS_TSX,  'src/pages/Settings.tsx'],
+    [path.join(projectPath, 'src', 'components', 'ui', 'Button.tsx'), BUTTON_TSX,    'src/components/ui/Button.tsx'],
+    [path.join(projectPath, 'src', 'components', 'ui', 'Input.tsx'),  INPUT_TSX,     'src/components/ui/Input.tsx'],
+    [path.join(projectPath, 'src', 'components', 'ui', 'Card.tsx'),   CARD_TSX,      'src/components/ui/Card.tsx'],
+  ]
 
-export default function App() {
-  return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
-                <span className="text-xl font-bold text-primary">SaaS App</span>
-              </div>
-              <div className="flex items-center space-x-8">
-                <Link to="/" className="text-gray-600 hover:text-primary">Dashboard</Link>
-                <Link to="/settings" className="text-gray-600 hover:text-primary">Settings</Link>
-              </div>
-            </div>
-          </div>
-        </nav>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </main>
-      </div>
-    </BrowserRouter>
-  )
-}
-`
-  await fs.writeFile(path.join(projectPath, 'src', 'App.tsx'), appContent, 'utf-8')
-  files.push('src/App.tsx')
-
-  // Minimal Dashboard
-  const dashboardContent = `export default function Dashboard() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-2 text-gray-600">Welcome to your SaaS application.</p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-900">Active Users</h3>
-          <p className="text-3xl font-bold text-primary mt-2">0</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-900">Revenue</h3>
-          <p className="text-3xl font-bold text-accent mt-2">$0</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-900">Growth</h3>
-          <p className="text-3xl font-bold text-secondary mt-2">0%</p>
-        </div>
-      </div>
-    </div>
-  )
-}
-`
-  await fs.writeFile(path.join(projectPath, 'src', 'pages', 'Dashboard.tsx'), dashboardContent, 'utf-8')
-  files.push('src/pages/Dashboard.tsx')
-
-  // Minimal Settings
-  const settingsContent = `export default function Settings() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="mt-2 text-gray-600">Manage your application settings.</p>
-      </div>
-      <div className="bg-white p-6 rounded-lg shadow space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">App Name</label>
-          <input type="text" className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Email</label>
-          <input type="email" className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
-        </div>
-        <button className="bg-primary text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition">
-          Save Changes
-        </button>
-      </div>
-    </div>
-  )
-}
-`
-  await fs.writeFile(path.join(projectPath, 'src', 'pages', 'Settings.tsx'), settingsContent, 'utf-8')
-  files.push('src/pages/Settings.tsx')
-
-  // Button component
-  const buttonContent = `import { ButtonHTMLAttributes, forwardRef } from 'react'
-
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost'
-  size?: 'sm' | 'md' | 'lg'
-  loading?: boolean
-}
-
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = '', variant = 'primary', size = 'md', loading, children, disabled, ...props }, ref) => {
-    const baseStyles = 'inline-flex items-center justify-center font-medium rounded-md transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed'
-
-    const variants = {
-      primary: 'bg-primary text-white hover:bg-indigo-700 focus:ring-primary',
-      secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500',
-      ghost: 'text-gray-600 hover:bg-gray-100 focus:ring-gray-500',
-    }
-
-    const sizes = {
-      sm: 'px-3 py-1.5 text-sm',
-      md: 'px-4 py-2 text-base',
-      lg: 'px-6 py-3 text-lg',
-    }
-
-    return (
-      <button
-        ref={ref}
-        className={\`\${baseStyles} \${variants[variant]} \${sizes[size]} \${className}\`}
-        disabled={disabled || loading}
-        {...props}
-      >
-        {loading ? <span className="mr-2">Loading...</span> : null}
-        {children}
-      </button>
-    )
+  for (const [filePath, content, relativePath] of writes) {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, content, 'utf-8')
+    files.push(relativePath)
   }
-)
-
-Button.displayName = 'Button'
-export default Button
-`
-  await fs.writeFile(path.join(projectPath, 'src', 'components', 'ui', 'Button.tsx'), buttonContent, 'utf-8')
-  files.push('src/components/ui/Button.tsx')
-
-  // Input component
-  const inputContent = `import { InputHTMLAttributes, forwardRef } from 'react'
-
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string
-  error?: string
-  helperText?: string
 }
 
-const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className = '', label, error, helperText, id, ...props }, ref) => {
-    const inputId = id || label?.toLowerCase().replace(/\\s+/g, '-')
-
-    return (
-      <div className="w-full">
-        {label && (
-          <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">
-            {label}
-          </label>
-        )}
-        <input
-          ref={ref}
-          id={inputId}
-          className={\`block w-full rounded-md border \${error ? 'border-red-500' : 'border-gray-300'} px-3 py-2 shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-gray-100 disabled:cursor-not-allowed \${className}\`}
-          {...props}
-        />
-        {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-        {helperText && !error && <p className="mt-1 text-sm text-gray-500">{helperText}</p>}
-      </div>
-    )
-  }
-)
-
-Input.displayName = 'Input'
-export default Input
-`
-  await fs.writeFile(path.join(projectPath, 'src', 'components', 'ui', 'Input.tsx'), inputContent, 'utf-8')
-  files.push('src/components/ui/Input.tsx')
-
-  // Card component
-  const cardContent = `import { HTMLAttributes, forwardRef } from 'react'
-
-interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  hover?: boolean
-}
-
-const Card = forwardRef<HTMLDivElement, CardProps>(
-  ({ className = '', hover = false, children, ...props }, ref) => {
-    return (
-      <div
-        ref={ref}
-        className={\`bg-white rounded-lg shadow \${hover ? 'hover:shadow-md transition-shadow cursor-pointer' : ''} \${className}\`}
-        {...props}
-      >
-        {children}
-      </div>
-    )
-  }
-)
-
-Card.displayName = 'Card'
-export default Card
-`
-  await fs.writeFile(path.join(projectPath, 'src', 'components', 'ui', 'Card.tsx'), cardContent, 'utf-8')
-  files.push('src/components/ui/Card.tsx')
-}
-
-async function buildUI(input: BuildUIInput, buildId: string): Promise<BuildUIOutput> {
+async function buildUI(input: BuildUIInput): Promise<BuildUIOutput> {
+  const buildId = input.buildId
   log(buildId, `Building UI at: ${input.projectPath}`)
 
   await broadcastEvent({
@@ -919,14 +733,26 @@ async function buildUI(input: BuildUIInput, buildId: string): Promise<BuildUIOut
 
     // Run npm run build
     log(buildId, 'Running npm run build...')
+    let buildWarning: string | null = null
+    let buildError: unknown = null
     try {
       await execAsync('npm run build', { cwd: input.projectPath, timeout: 180_000 })
-    } catch (buildErr) {
-      const msg = buildErr instanceof Error ? buildErr.message : String(buildErr)
-      // Check if it's just a TypeScript error that still produced output
-      const distExists = await fs.access(path.join(input.projectPath, 'dist')).then(() => true).catch(() => false)
-      if (!distExists) throw buildErr
-      console.warn(`[${buildId.slice(0, 8)}] Build completed with warnings:`, msg)
+    } catch (err) {
+      // If dist/ was produced despite the error it's a type/lint warning, not a fatal failure
+      const distExists = await fs
+        .access(path.join(input.projectPath, 'dist'))
+        .then(() => true)
+        .catch(() => false)
+      if (distExists) {
+        buildWarning = err instanceof Error ? err.message : String(err)
+      } else {
+        buildError = err
+      }
+    }
+    // Re-throw outside the catch so it propagates to the outer handler
+    if (buildError) throw buildError
+    if (buildWarning) {
+      console.warn(`[${buildId.slice(0, 8)}] Build completed with warnings:`, buildWarning)
     }
 
     const buildPath = path.join(input.projectPath, 'dist')
@@ -972,7 +798,8 @@ async function countBuildArtifacts(buildPath: string): Promise<{ components: num
   }
 }
 
-async function runTests(input: RunTestsInput, buildId: string): Promise<RunTestsOutput> {
+async function runTests(input: RunTestsInput): Promise<RunTestsOutput> {
+  const buildId = input.buildId
   log(buildId, `Running smoke tests for: ${input.projectPath}`)
 
   await broadcastEvent({
@@ -1069,7 +896,8 @@ async function runTests(input: RunTestsInput, buildId: string): Promise<RunTests
   }
 }
 
-async function deploy(input: DeployInput, buildId: string): Promise<DeployOutput> {
+async function deploy(input: DeployInput): Promise<DeployOutput> {
+  const buildId = input.buildId
   log(buildId, `Deploying: ${input.projectName}`)
 
   await broadcastEvent({
@@ -1134,3 +962,4 @@ main().catch((err) => {
   console.error('❌ Worker fatal error:', err)
   process.exit(1)
 })
+
