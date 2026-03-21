@@ -283,7 +283,8 @@ export type WSEvent =
   | { type: 'agent:status'; payload: { projectId: string; agentId: string; role: string; status: AgentStatus; task?: string; progress?: number } }
   | { type: 'agent:progress'; payload: { projectId: string; agentId: string; role: string; progress: number; status: string } }
   | { type: 'message:created'; payload: { projectId: string; conversationId: string; message: Message } }
-  | { type: 'task:created'; payload: { projectId: string; taskId: string; title: string; status: string; assigneeId: string; phase: string } }
+  | { type: 'task:created'; payload: { projectId: string; taskId: string; title: string; status: string; assigneeId: string; phase: string; description?: string; priority?: string; sprint?: number; estimatedHours?: number } }
+  | { type: 'task:updated'; payload: { projectId: string; taskId: string; status: string; completedAt?: string } }
   | { type: 'artifact:created'; payload: { projectId: string; artifactId: string; title: string; type: string; agentId?: string; agentRole?: string; phase?: string } }
   | { type: 'conversation:created'; payload: { projectId: string; conversationId: string; title: string; phase: string } }
   | { type: 'activity:log'; payload: ActivityLogEntry & { createdAt: string } }
@@ -292,7 +293,9 @@ export type WSEvent =
   | { type: 'deployment:running'; payload: { projectId: string; deploymentId: string; url: string } }
   | { type: 'deployment:failed'; payload: { projectId: string; deploymentId: string; error: string } }
   | { type: 'deployment:stopped'; payload: { projectId: string; deploymentId: string } }
-  | { type: 'deployment:options'; payload: { projectId: string; options: DeploymentOption[] } };
+  | { type: 'deployment:options'; payload: { projectId: string; options: DeploymentOption[] } }
+  | { type: 'project:resumed'; payload: { projectId: string } }
+  | { type: 'project:steered'; payload: { projectId: string; directive: string | null } };
 
 // ============ UI Constants ============
 

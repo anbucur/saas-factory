@@ -109,33 +109,92 @@ function getTaskDescription(phase: string, role: string): string {
   return map[phase]?.[role] ?? `Working on ${phase}`
 }
 
-function getPhasePrompt(phase: string, role: string): string {
-  const base = `Please perform your ${phase} phase responsibilities for this project.`
+// Each subtask has a label (shown in live panel) and a focused prompt.
+// Smaller, targeted prompts → faster LLM responses, better quality per section.
+function getPhaseSubtasks(phase: string, role: string): Array<{ label: string; prompt: string; maxTokens?: number }> {
   if (phase === 'requirements') {
-    if (role === 'pm') return `${base} Create a project plan with sprints, milestones, and team assignments. Include risk assessment and timeline estimates.`
-    if (role === 'ba') return `${base} Analyze the project description and create detailed requirements, user stories with acceptance criteria, and identify edge cases. Include data model suggestions.`
+    if (role === 'pm') return [
+      { label: 'Drafting project charter', prompt: 'Write a concise project charter: business objective, success metrics, and key stakeholders. 2-3 paragraphs.', maxTokens: 800 },
+      { label: 'High-level timeline', prompt: 'Create a high-level timeline with 4-5 major milestones and their dates relative to project start. Use a markdown list.', maxTokens: 600 },
+      { label: 'Planning sprints', prompt: 'Define 3 sprints with clear goals and deliverables per sprint. Use a markdown table.', maxTokens: 800 },
+      { label: 'Risk register', prompt: 'Identify 3-5 potential risks for this project and provide mitigations for each. Use a table.', maxTokens: 700 },
+    ]
+    if (role === 'ba') return [
+      { label: 'User personas', prompt: 'Identify 2 primary user personas. For each: goals and pain points. 4-5 bullet points each.', maxTokens: 700 },
+      { label: 'Functional stories (Core)', prompt: 'Write 4 critical user stories for the core features in "As a... I want... so that..." format with 2 criteria each.', maxTokens: 800 },
+      { label: 'Functional stories (Admin)', prompt: 'Write 4 user stories for administrative or secondary features including auth and settings.', maxTokens: 800 },
+      { label: 'Core data model', prompt: 'Define the core data entities and their key fields (5-8 fields each) in a markdown table.', maxTokens: 800 },
+    ]
   }
   if (phase === 'architecture') {
-    if (role === 'pm') return `${base} Review the architecture proposal and provide feedback on feasibility, timeline impact, and resource requirements.`
-    if (role === 'architect') return `${base} Design the system architecture, choose the technology stack with rationale, define API contracts with request/response schemas, and create the database schema. Include component diagrams.`
+    if (role === 'architect') return [
+      { label: 'System components', prompt: 'Describe the high-level architecture: frontend, backend, and database choices with brief rationale.', maxTokens: 800 },
+      { label: 'Component interfaces', prompt: 'Detail how the major components interact. List 3-4 key internal interfaces or service boundaries.', maxTokens: 700 },
+      { label: 'API Blueprint (Part 1)', prompt: 'Define the 3 most important GET endpoints including path, parameters, and response shape.', maxTokens: 900 },
+      { label: 'API Blueprint (Part 2)', prompt: 'Define the 3 most important POST/PUT endpoints including path, request body, and auth requirements.', maxTokens: 900 },
+      { label: 'Database schema', prompt: 'Provide a detailed database schema: tables, columns, types, and primary/foreign keys. Use markdown.', maxTokens: 900 },
+      { label: 'Security strategy', prompt: 'Define the authentication flow, authorization (RBAC), and sensitive data protection measures.', maxTokens: 800 },
+    ]
+    if (role === 'pm') return [
+      { label: 'Architecture review', prompt: 'Review the architecture and list 3 strengths and 2 potential scalability risks.', maxTokens: 600 },
+      { label: 'Go/No-go assessment', prompt: 'Provide a final recommendation on whether to proceed to development based on the design.', maxTokens: 400 },
+    ]
   }
   if (phase === 'development') {
-    if (role === 'pm') return `${base} Track development progress, identify any blockers, and coordinate between frontend and backend developers.`
-    if (role === 'frontend_dev') return `${base} Implement the frontend: set up the project structure, create reusable UI components, implement all pages with routing, add state management, and connect to backend APIs. Write actual working code.`
-    if (role === 'backend_dev') return `${base} Implement the backend: set up the server framework, create database models and migrations, implement all API endpoints with validation, add authentication middleware, and error handling. Write actual working code.`
+    if (role === 'pm') return [
+      { label: 'Dev coordination', prompt: 'Write a developer coordination note detailing parallel work streams and integration checkpoints.', maxTokens: 400 },
+      { label: 'Blocker assessment', prompt: 'Analyze potential technical blockers for this stack and suggest preventative measures.', maxTokens: 500 },
+    ]
+    if (role === 'frontend_dev') return [
+      { label: 'Folder structure & setup', prompt: 'Define the frontend app structure, folder layout, and core configuration files (routing, types).', maxTokens: 800 },
+      { label: 'Design system & theme', prompt: 'Define the design tokens (colors, typography) and 5 core reusable UI components.', maxTokens: 800 },
+      { label: 'Feature implementation (A)', prompt: 'Write the TypeScript/JSX code for the primary user dashboard or landing page.', maxTokens: 1200 },
+      { label: 'Feature implementation (B)', prompt: 'Write the code for the main functional feature (e.g. search, editor, or list view).', maxTokens: 1200 },
+    ]
+    if (role === 'backend_dev') return [
+      { label: 'API Server structure', prompt: 'Define the backend folder structure, middleware chain, and error handling pattern.', maxTokens: 800 },
+      { label: 'Database & Auth layer', prompt: 'Implement the database connection logic and the core authentication/authorization middleware.', maxTokens: 900 },
+      { label: 'Endpoint group (A)', prompt: 'Implement the two most critical data retrieval (GET) endpoints with validation and DB queries.', maxTokens: 1200 },
+      { label: 'Endpoint group (B)', prompt: 'Implement the two most critical mutation (POST/PUT) endpoints with validation and error handling.', maxTokens: 1200 },
+    ]
   }
   if (phase === 'testing') {
-    if (role === 'pm') return `${base} Review test results, prioritize bug fixes, and determine readiness for deployment.`
-    if (role === 'qa') return `${base} Create comprehensive test plans, write automated tests (unit, integration, e2e), perform security audit, and report all issues found with severity levels and reproduction steps.`
-    if (role === 'frontend_dev') return `${base} Review and fix any frontend bugs found during testing. Add missing error handling and edge case coverage.`
-    if (role === 'backend_dev') return `${base} Review and fix any backend bugs found during testing. Add missing validation and error handling.`
+    if (role === 'qa') return [
+      { label: 'Test strategy', prompt: 'Define the overall testing strategy: scope, tooling, and environment requirements.', maxTokens: 700 },
+      { label: 'Unit test cases', prompt: 'Write 4-5 unit test scenarios for critical business logic with expected results.', maxTokens: 800 },
+      { label: 'Integration test cases', prompt: 'Write 3-4 end-to-end integration scenarios for the core user flows.', maxTokens: 800 },
+      { label: 'Security audit cases', prompt: 'List 3 critical security tests focusing on auth bypass and data leak prevention.', maxTokens: 700 },
+    ]
+    if (role === 'frontend_dev') return [
+      { label: 'UI bug fixes', prompt: 'Identify and describe fixes for 3 common UI issues: responsive layout bugs, state race conditions, and error boundaries.', maxTokens: 800 },
+    ]
+    if (role === 'backend_dev') return [
+      { label: 'API bug fixes', prompt: 'Identify and describe fixes for 3 common API issues: edge case validation, DB timeout handling, and slow queries.', maxTokens: 800 },
+    ]
+    if (role === 'pm') return [
+      { label: 'Testing sign-off', prompt: 'Review test results and provide an official sign-off summary with known issues list.', maxTokens: 500 },
+    ]
   }
   if (phase === 'deployment') {
-    if (role === 'pm') return `${base} Coordinate the deployment process, verify the launch checklist, and confirm all quality gates have been passed.`
-    if (role === 'devops') return `${base} Set up the deployment pipeline with Docker, create CI/CD configuration (GitHub Actions), configure monitoring and logging, and deploy to production. Include rollback procedures.`
+    if (role === 'devops') return [
+      { label: 'Infrastructure as Code', prompt: 'Write a production-ready Dockerfile and docker-compose.yml with environment variable mapping.', maxTokens: 1000 },
+      { label: 'CI/CD Pipeline', prompt: 'Design a GitHub Actions or GitLab CI pipeline for build, test, and container push.', maxTokens: 900 },
+      { label: 'Deployment runbook', prompt: 'Write a step-by-step deployment and rollback guide with health check verification.', maxTokens: 800 },
+    ]
+    if (role === 'pm') return [
+      { label: 'Launch checklist', prompt: 'Complete the launch readiness checklist: technical, business, and legal checkmarks.', maxTokens: 600 },
+      { label: 'Live monitoring setup', prompt: 'Identify 5 critical health metrics to monitor in production and their alert thresholds.', maxTokens: 600 },
+    ]
   }
-  return base
+  // fallback: single generic call
+  return [{ label: `Working on ${phase}`, prompt: `Please perform your key ${phase} phase responsibilities for this project. Be specific and concise. Focus on the most impactful deliverables.`, maxTokens: 1000 }]
 }
+
+/** Legacy single-string helper used only where we still need a joined prompt (e.g. coding agent plan). */
+function getPhasePrompt(phase: string, role: string): string {
+  return getPhaseSubtasks(phase, role).map(t => t.prompt).join('\n\n')
+}
+
 
 function getMessageType(phase: string, role: string): string {
   if (role === 'pm') return 'decision'
@@ -226,10 +285,29 @@ const TASK_TEMPLATES: Record<string, Record<string, Array<{
   },
 }
 
-async function createTasksFromWork(projectId: string, agentRecord: { id: string; role: string }, phase: string): Promise<void> {
+async function createTasksAsInProgress(
+  projectId: string,
+  agentRecord: { id: string; role: string; copyIndex: number },
+  phase: string,
+  subtaskSlice?: { start: number; end: number; total: number }
+): Promise<void> {
   const now = new Date()
-  const templates = TASK_TEMPLATES[phase]?.[agentRecord.role] ?? []
+  let templates = TASK_TEMPLATES[phase]?.[agentRecord.role] ?? []
+  
+  // Distribute templates evenly across parallel copies
+  if (subtaskSlice && subtaskSlice.total > 1) {
+    templates = templates.filter((_, i) => i % subtaskSlice.total === subtaskSlice.start)
+    if (templates.length === 0) {
+      // Fallback: if there are fewer templates than agents, just give them a generic placeholder template
+      templates = [{ title: `Assist with ${phase}`, description: `Support the ${agentRecord.role} tasks in ${phase}`, priority: 'medium', sprint: 1, hours: 2 }]
+    }
+  }
+
+  // Check which tasks already exist for this agent+phase so we don't double-insert
+  const existing = db.select().from(tasks).where(eq(tasks.projectId, projectId)).all()
+  const existingTitles = new Set(existing.filter(t => t.phase === phase && t.assigneeId === agentRecord.id).map(t => t.title))
   for (const template of templates) {
+    if (existingTitles.has(template.title)) continue
     const taskId = uuid()
     db.insert(tasks).values({
       id: taskId,
@@ -237,18 +315,36 @@ async function createTasksFromWork(projectId: string, agentRecord: { id: string;
       assigneeId: agentRecord.id,
       title: template.title,
       description: template.description,
-      status: 'done',
+      status: 'in_progress',
       priority: template.priority as any,
       sprint: template.sprint,
       phase,
       estimatedHours: template.hours,
       createdAt: now,
       updatedAt: now,
-      completedAt: now,
+      completedAt: null,
     }).run()
     _broadcast({
       type: 'task:created',
-      payload: { projectId, taskId, title: template.title, status: 'done', assigneeId: agentRecord.id, phase },
+      payload: { projectId, taskId, title: template.title, status: 'in_progress', assigneeId: agentRecord.id, phase, description: template.description, priority: template.priority, sprint: template.sprint, estimatedHours: template.hours },
+    })
+  }
+}
+
+async function markTasksDone(projectId: string, agentRecord: { id: string; role: string; copyIndex: number }, phase: string): Promise<void> {
+  const now = new Date()
+  const agentTasks = db.select().from(tasks)
+    .where(eq(tasks.projectId, projectId))
+    .all()
+    .filter(t => t.assigneeId === agentRecord.id && t.phase === phase && t.status === 'in_progress')
+  for (const task of agentTasks) {
+    db.update(tasks)
+      .set({ status: 'done', completedAt: now, updatedAt: now })
+      .where(eq(tasks.id, task.id))
+      .run()
+    _broadcast({
+      type: 'task:updated',
+      payload: { projectId, taskId: task.id, status: 'done', completedAt: now.toISOString() },
     })
   }
 }
@@ -297,18 +393,24 @@ export async function runAgentWork(input: {
   role: string
   conversationId: string
   metricsId?: string
+  agentId?: string           // explicit agent ID (for multi-copy parallelism)
+  subtaskSlice?: { start: number; end: number; total: number } // which subtasks to handle
 }): Promise<void> {
-  const { projectId, phase, role, conversationId, metricsId } = input
+  const { projectId, phase, role, conversationId, metricsId, subtaskSlice } = input
   const agentStartTime = Date.now()
 
   const roleConfig = AGENT_ROLES[role as AgentRole]
   if (!roleConfig) throw new Error(`Unknown agent role: ${role}`)
 
-  const agentRecord = db.select().from(agents)
+  // Find the agent: use explicit agentId if provided, otherwise first match by role
+  const allRoleAgents = db.select().from(agents)
     .where(eq(agents.projectId, projectId))
     .all()
-    .find(a => a.role === role)
-  if (!agentRecord) throw new Error(`Agent ${role} not found for project ${projectId}`)
+    .filter(a => a.role === role)
+  const agentRecord = input.agentId
+    ? allRoleAgents.find(a => a.id === input.agentId)
+    : allRoleAgents[0]
+  if (!agentRecord) throw new Error(`Agent ${role}${input.agentId ? `(${input.agentId})` : ''} not found for project ${projectId}`)
 
   const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
   if (!project) throw new Error(`Project ${projectId} not found`)
@@ -350,11 +452,32 @@ export async function runAgentWork(input: {
     }
   }
 
-  const context = contextParts.join('\n')
-  const prompt = getPhasePrompt(phase, role)
-  const taskDesc = getTaskDescription(phase, role)
+  // Inject steering directive if set
+  if (project.config && project.config !== '{}') {
+    try {
+      const config = JSON.parse(project.config)
+      if (config.steeringDirective) {
+        contextParts.push(`\n--- [PM DIRECTIVE - HIGH PRIORITY] ---\n${config.steeringDirective}\n--- Acknowledge this directive and prioritize it in your output. ---`)
+        logActivity(projectId, agentRecord.id, role, 'Applying PM directive', `Directive injected into ${role} context`, 'info', phase)
+      }
+    } catch { /* ignore */ }
+  }
 
-  // working
+  const context = contextParts.join('\n')
+  const allSubtasks = getPhaseSubtasks(phase, role)
+
+  // Determine which subtasks this agent copy handles
+  let mySubtasks = allSubtasks
+  if (subtaskSlice && subtaskSlice.total > 1) {
+    mySubtasks = allSubtasks.filter((_, i) => i % subtaskSlice.total === subtaskSlice.start)
+    if (mySubtasks.length === 0) mySubtasks = [allSubtasks[subtaskSlice.start % allSubtasks.length]]
+  }
+
+  const taskDesc = mySubtasks[0]?.label ?? getTaskDescription(phase, role)
+
+  // working — emit tasks as in_progress immediately so sprint board shows live state
+  await createTasksAsInProgress(projectId, agentRecord as any, phase, subtaskSlice)
+
   db.update(agents)
     .set({ status: 'working', progress: 20, currentTask: taskDesc })
     .where(eq(agents.id, agentRecord.id))
@@ -375,8 +498,8 @@ export async function runAgentWork(input: {
       logActivity(projectId, agentRecord.id, role, `Using ${codingAgent.name}`, `${roleConfig.name} is using ${codingAgent.name} to write code`, 'info', phase)
 
       const planResponse = await callLLM(roleConfig.systemPrompt, [
-        { role: 'user', content: `${context}\n\n${prompt}\n\nProvide a detailed implementation plan with specific files to create and their contents. Be very specific about the code structure.` },
-      ])
+        { role: 'user', content: `${context}\n\n${getPhasePrompt(phase, role)}\n\nProvide a detailed implementation plan with specific files to create and their contents. Be very specific about the code structure.` },
+      ], { maxTokens: 2000 })
 
       db.update(agents).set({ progress: 40, currentTask: `Writing code with ${codingAgent.name}` }).where(eq(agents.id, agentRecord.id)).run()
       _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: 40, status: 'working' } })
@@ -384,7 +507,7 @@ export async function runAgentWork(input: {
       const codingResult = await runCodingAgent({
         projectId,
         projectName: project.name,
-        task: `${prompt}\n\nHere is the implementation plan from the team:\n${planResponse.content}`,
+        task: `${getPhasePrompt(phase, role)}\n\nHere is the implementation plan from the team:\n${planResponse.content}`,
         context,
       })
 
@@ -395,16 +518,35 @@ export async function runAgentWork(input: {
         responseContent = `## Implementation (Fallback Mode)\n\n${planResponse.content}\n\n*Note: ${codingResult.error ?? 'Coding agent encountered an issue, using plan output instead.'}*`
       }
     } else {
-      const response = await callLLM(roleConfig.systemPrompt, [{ role: 'user', content: `${context}\n\n${prompt}` }])
-      responseContent = response.content
+      // No coding agent: run micro-tasks sequentially
+      const sections: string[] = []
+      for (let i = 0; i < mySubtasks.length; i++) {
+        const subtask = mySubtasks[i]
+        const progressPct = 20 + Math.round(((i + 1) / mySubtasks.length) * 55)
+        db.update(agents).set({ progress: progressPct, currentTask: subtask.label }).where(eq(agents.id, agentRecord.id)).run()
+        _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'working', task: subtask.label } })
+        _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: progressPct, status: 'working' } })
+        const resp = await callLLM(roleConfig.systemPrompt, [{ role: 'user', content: `${context}\n\n${subtask.prompt}` }], { maxTokens: subtask.maxTokens ?? 1000 })
+        sections.push(`## ${subtask.label}\n\n${resp.content}`)
+      }
+      responseContent = sections.join('\n\n---\n\n')
     }
   } else {
-    const response = await callLLM(roleConfig.systemPrompt, [{ role: 'user', content: `${context}\n\n${prompt}` }])
-    responseContent = response.content
+    // Non-coding path: run assigned subtasks sequentially with live progress
+    const sections: string[] = []
+    for (let i = 0; i < mySubtasks.length; i++) {
+      const subtask = mySubtasks[i]
+      const progressPct = 20 + Math.round(((i + 1) / mySubtasks.length) * 55)
+      db.update(agents).set({ progress: progressPct, currentTask: subtask.label }).where(eq(agents.id, agentRecord.id)).run()
+      _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'working', task: subtask.label } })
+      _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: progressPct, status: 'working' } })
+      const resp = await callLLM(roleConfig.systemPrompt, [{ role: 'user', content: `${context}\n\n${subtask.prompt}` }], { maxTokens: subtask.maxTokens ?? 1000 })
+      sections.push(`## ${subtask.label}\n\n${resp.content}`)
+    }
+    responseContent = sections.join('\n\n---\n\n')
   }
 
-  db.update(agents).set({ progress: 75 }).where(eq(agents.id, agentRecord.id)).run()
-  _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: 75, status: 'working' } })
+  // progress-100 is done via markTasksDone → agent:done below
 
   // Save message
   const messageId = uuid()
@@ -448,7 +590,7 @@ export async function runAgentWork(input: {
     })
   }
 
-  await createTasksFromWork(projectId, agentRecord, phase)
+  await markTasksDone(projectId, agentRecord as any, phase)
 
   db.update(agents).set({ status: 'done', progress: 100, currentTask: null }).where(eq(agents.id, agentRecord.id)).run()
   _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'done', progress: 100 } })
@@ -622,17 +764,38 @@ export async function executeDeployment(input: {
   logActivity(projectId, null, 'devops', `Starting ${strategy} deployment`,
     `Deploying project using ${strategy} strategy`, 'info', 'deployment')
 
-  const result = await redeployProject(projectId, strategy, _broadcast)
+  try {
+    const result = await redeployProject(projectId, strategy, _broadcast)
 
-  if (result.success) {
-    logActivity(projectId, null, 'devops', 'Deployment successful',
-      `Project deployed successfully. URL: ${result.url}`, 'success', 'deployment')
-  } else {
-    logActivity(projectId, null, 'devops', 'Deployment failed',
-      `Deployment failed: ${result.error}`, 'error', 'deployment')
+    if (result.success) {
+      logActivity(projectId, null, 'devops', 'Deployment successful',
+        `Project deployed successfully. URL: ${result.url}`, 'success', 'deployment')
+    } else {
+      logActivity(projectId, null, 'devops', 'Deployment failed',
+        `Deployment failed: ${result.error}`, 'error', 'deployment')
+    }
+    return result
+  } catch (err) {
+    logActivity(projectId, null, null, 'Deployment failed', String(err), 'error', 'deployment')
+    return { success: false, url: '', deploymentId: '', error: String(err) }
   }
+}
 
-  return result
+/** Returns the map of all provisioned agents for the project, grouped by role. Used to drive the parallel arrays in the workflow. */
+export async function getAgentPool(input: { projectId: string; phase: string }): Promise<any> {
+  const projectAgents = db.select().from(agents).where(eq(agents.projectId, input.projectId)).all()
+  
+  const pool = {
+    pm: [] as any[], ba: [] as any[], architect: [] as any[],
+    frontend_dev: [] as any[], backend_dev: [] as any[], qa: [] as any[], devops: [] as any[]
+  }
+  
+  for (const a of projectAgents) {
+    const k = a.role as keyof typeof pool
+    if (pool[k]) pool[k].push({ id: a.id, copyIndex: a.copyIndex })
+  }
+  
+  return pool
 }
 
 // ── Worker startup ────────────────────────────────────────────────────────────

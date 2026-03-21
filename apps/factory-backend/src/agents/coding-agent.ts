@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
@@ -26,18 +26,14 @@ const GENERATED_DIR = path.resolve(process.cwd(), '../../generated');
  * Prefers claude, falls back to opencode if available.
  */
 function resolveCodingCLI(): { cmd: string; name: string } | null {
-  // Check for Claude Code
-  try {
-    const result = Bun?.spawnSync?.(['which', 'claude']);
-    // Can't use Bun in Node context - use execSync
-  } catch {}
-
+  // No Bun in Node context
   // Check common paths
   const claudePaths = [
     '/opt/node22/bin/claude',
     '/usr/local/bin/claude',
     '/usr/bin/claude',
-  ];
+    process.platform === 'win32' && process.env.APPDATA ? path.join(process.env.APPDATA, 'npm/claude.cmd') : '',
+  ].filter(Boolean);
 
   for (const p of claudePaths) {
     if (fs.existsSync(p)) {
@@ -45,12 +41,13 @@ function resolveCodingCLI(): { cmd: string; name: string } | null {
     }
   }
 
-  // Try 'claude' in PATH via which
+  // Try 'claude' in PATH via which/where
   try {
-    const { execSync } = require('child_process');
-    const claudePath = execSync('which claude', { encoding: 'utf-8' }).trim();
-    if (claudePath) return { cmd: claudePath, name: 'Claude Code' };
-  } catch {}
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    const paths = execSync(`${whichCmd} claude`, { encoding: 'utf-8' }).trim().split('\n').map((p: string) => p.trim());
+    const validPath = process.platform === 'win32' ? (paths.find((p: string) => p.endsWith('.cmd') || p.endsWith('.exe')) || paths[0]) : paths[0];
+    if (validPath) return { cmd: validPath, name: 'Claude Code' };
+  } catch (err) { console.log('DEBUG CLAUDE FIND ERR:', err); }
 
   // Fallback: check for opencode
   const opencodePaths = [
@@ -65,9 +62,10 @@ function resolveCodingCLI(): { cmd: string; name: string } | null {
   }
 
   try {
-    const { execSync } = require('child_process');
-    const opencodePath = execSync('which opencode', { encoding: 'utf-8' }).trim();
-    if (opencodePath) return { cmd: opencodePath, name: 'Opencode' };
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    const paths = execSync(`${whichCmd} opencode`, { encoding: 'utf-8' }).trim().split('\n').map((p: string) => p.trim());
+    const validPath = process.platform === 'win32' ? (paths.find((p: string) => p.endsWith('.cmd') || p.endsWith('.exe')) || paths[0]) : paths[0];
+    if (validPath) return { cmd: validPath, name: 'Opencode' };
   } catch {}
 
   return null;
@@ -166,6 +164,7 @@ function executeCLI(cmd: string, prompt: string, cwd: string): Promise<string> {
       },
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 600_000, // 10 minute timeout per task
+      shell: process.platform === 'win32',
     });
 
     let stdout = '';

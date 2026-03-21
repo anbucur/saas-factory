@@ -73,6 +73,15 @@ export const api = {
   resumeProject: (id: string) =>
     request<{ status: string }>(`/projects/${id}/resume`, { method: 'POST' }),
 
+  steerProject: (id: string, directive: string) =>
+    request<{ ok: boolean; directive: string }>(`/projects/${id}/steer`, {
+      method: 'POST',
+      body: JSON.stringify({ directive }),
+    }),
+
+  clearSteer: (id: string) =>
+    request<{ ok: boolean }>(`/projects/${id}/steer`, { method: 'DELETE' }),
+
   // Metrics & Analytics
   getProjectMetrics: (projectId: string) => request<any[]>(`/projects/${projectId}/metrics`),
 

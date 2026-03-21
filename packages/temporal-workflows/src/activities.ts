@@ -19,6 +19,8 @@ export interface RunAgentWorkInput {
   role: string
   conversationId: string
   metricsId?: string
+  agentId?: string
+  subtaskSlice?: { start: number; end: number; total: number }
 }
 
 export interface RunCollaborationRoundInput {
@@ -101,5 +103,26 @@ export async function prepareDeployment(_input: PrepareDeploymentInput): Promise
 }
 
 export async function executeDeployment(_input: ExecuteDeploymentInput): Promise<ExecuteDeploymentOutput> {
+  throw new Error('Activity stub — implemented in worker')
+}
+
+export interface GetAgentPoolInput {
+  projectId: string
+  phase: string
+}
+
+export type AgentPoolEntry = { id: string; copyIndex: number }
+
+export interface GetAgentPoolOutput {
+  pm: AgentPoolEntry[]
+  ba: AgentPoolEntry[]
+  architect: AgentPoolEntry[]
+  frontend_dev: AgentPoolEntry[]
+  backend_dev: AgentPoolEntry[]
+  qa: AgentPoolEntry[]
+  devops: AgentPoolEntry[]
+}
+
+export async function getAgentPool(_input: GetAgentPoolInput): Promise<GetAgentPoolOutput> {
   throw new Error('Activity stub — implemented in worker')
 }

@@ -22,10 +22,27 @@ const createProjectSchema = z.object({
     stack: z.array(z.string()).optional(),
     features: z.array(z.string()).optional(),
     billingMode: z.enum(['subscription', 'usage', 'none']).optional(),
+    agentPoolSizes: z.record(z.string(), z.number().min(1).max(3)).optional(),
   }).optional(),
 })
 
-export function createProjectRoutes(broadcast: (event: unknown) => void, temporalClient: Client) {
+/** Roles that can have >1 copy. PM always stays at 1 (it's the coordinator). */
+const PARALLEL_ELIGIBLE_ROLES = ['ba', 'architect', 'frontend_dev', 'backend_dev', 'qa', 'devops'] as const
+const MAX_COPIES_PER_ROLE = 3
+
+const RANDOM_NAMES = [
+  'Alice', 'Bob', 'Charlie', 'Diana', 'Ethan', 'Fiona', 'George', 'Hannah',
+  'Ian', 'Julia', 'Kevin', 'Luna', 'Marcus', 'Nora', 'Oliver', 'Penelope',
+  'Quinn', 'Riley', 'Sam', 'Tara', 'Ulysses', 'Victoria', 'William', 'Xena',
+  'Yusuf', 'Zara', 'Alex', 'Bella', 'Cameron', 'Diego', 'Emma', 'Felix',
+  'Grace', 'Henry', 'Isla', 'Jack', 'Kira', 'Leo', 'Mia', 'Noah', 'Olivia'
+]
+
+function getRandomName() {
+  return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)]
+}
+
+export function createProjectRoutes(broadcast: (event: unknown) => void, temporalClient?: Client) {
   const app = new Hono()
 
   // List all projects
@@ -93,6 +110,20 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
     const { name, description, config = {} } = parsed.data
     const projectId = uuid()
     const now = new Date()
+    const poolSizes: Record<string, number> = {}
+
+    // Build pool sizes: PM is always 1; other roles use config or default 1
+    for (const role of Object.keys(AGENT_ROLES)) {
+      if (role === 'pm') {
+        poolSizes[role] = 1
+      } else {
+        const requested = config.agentPoolSizes?.[role] ?? 1
+        poolSizes[role] = Math.min(Math.max(requested, 1), MAX_COPIES_PER_ROLE)
+      }
+    }
+
+    // Persist pool sizes in config so the workflow and UI can read them
+    const fullConfig = { ...config, agentPoolSizes: poolSizes }
 
     db.insert(projects).values({
       id: projectId,
@@ -100,21 +131,32 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
       description,
       status: 'planning',
       currentPhase: 'requirements',
-      config: JSON.stringify(config),
+      config: JSON.stringify(fullConfig),
       createdAt: now,
       updatedAt: now,
     }).run()
 
+    // Spawn correct number of agents per role
+    let totalAgents = 0
+    // To ensure unique names per project, shuffle a copy of the names array
+    const availableNames = [...RANDOM_NAMES].sort(() => 0.5 - Math.random())
+
     for (const [role, roleConfig] of Object.entries(AGENT_ROLES)) {
-      db.insert(agents).values({
-        id: uuid(),
-        projectId,
-        role: role as AgentRole,
-        name: roleConfig.name,
-        status: 'idle',
-        progress: 0,
-        createdAt: now,
-      }).run()
+      const count = poolSizes[role] ?? 1
+      for (let i = 0; i < count; i++) {
+        const agentName = availableNames.pop() ?? getRandomName()
+        db.insert(agents).values({
+          id: uuid(),
+          projectId,
+          role: role as AgentRole,
+          name: `${roleConfig.name} (${agentName})`,
+          copyIndex: i,
+          status: 'idle',
+          progress: 0,
+          createdAt: now,
+        }).run()
+        totalAgents++
+      }
     }
 
     const codingAgent = isCodingAgentAvailable()
@@ -125,7 +167,7 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
       agentId: null,
       agentRole: null,
       action: 'Project created',
-      details: `Project "${name}" initialized with ${Object.keys(AGENT_ROLES).length} agents. ${codingInfo}`,
+      details: `Project "${name}" initialized with ${totalAgents} agents (pool: ${Object.entries(poolSizes).map(([r, n]) => `${r}×${n}`).join(', ')}). ${codingInfo}`,
       logType: 'milestone',
       phase: 'requirements',
       createdAt: now,
@@ -150,6 +192,10 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
 
     broadcast({ type: 'project:started', payload: { projectId } })
 
+    if (!temporalClient) {
+      return c.json({ error: 'Temporal server not available. Workflow could not be started.' }, 503)
+    }
+
     // Start or resume the Temporal workflow — use projectId as workflowId for idempotency
     await temporalClient.workflow.start('buildSaaSProject', {
       workflowId: projectId,
@@ -171,6 +217,10 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
       .set({ status: 'paused', updatedAt: new Date() })
       .where(eq(projects.id, projectId))
       .run()
+
+    if (!temporalClient) {
+      return c.json({ error: 'Temporal server not available' }, 503)
+    }
 
     const handle = temporalClient.workflow.getHandle(projectId)
     await handle.signal('pause')
@@ -203,11 +253,47 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
       .where(eq(projects.id, projectId))
       .run()
 
+    if (!temporalClient) {
+      return c.json({ error: 'Temporal server not available' }, 503)
+    }
+
     const handle = temporalClient.workflow.getHandle(projectId)
     await handle.signal('resume')
 
     broadcast({ type: 'project:resumed', payload: { projectId } })
     return c.json({ status: 'resumed' })
+  })
+
+  // Set a steering directive for the PM to inject into agents
+  app.post('/:id/steer', async (c) => {
+    const projectId = c.req.param('id')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+    const body = await c.req.json()
+    const directive = String(body.directive ?? '').trim()
+    if (!directive) return c.json({ error: 'directive is required' }, 400)
+
+    const config = JSON.parse(project.config || '{}')
+    config.steeringDirective = directive
+    db.update(projects).set({ config: JSON.stringify(config), updatedAt: new Date() }).where(eq(projects.id, projectId)).run()
+    broadcast({ type: 'project:steered', payload: { projectId, directive } })
+    db.insert(activityLog).values({
+      id: uuid(), projectId, agentId: null, agentRole: null,
+      action: 'PM directive set', details: `Directive: "${directive}"`, logType: 'info', phase: null, createdAt: new Date(),
+    }).run()
+    return c.json({ ok: true, directive })
+  })
+
+  // Clear the steering directive
+  app.delete('/:id/steer', async (c) => {
+    const projectId = c.req.param('id')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+    const config = JSON.parse(project.config || '{}')
+    delete config.steeringDirective
+    db.update(projects).set({ config: JSON.stringify(config), updatedAt: new Date() }).where(eq(projects.id, projectId)).run()
+    broadcast({ type: 'project:steered', payload: { projectId, directive: null } })
+    return c.json({ ok: true })
   })
 
   // Get project agents
@@ -544,6 +630,7 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
 
     // If workflow is running and awaiting deploy choice, signal it instead
     try {
+      if (!temporalClient) throw new Error('No Temporal')
       const handle = temporalClient.workflow.getHandle(projectId)
       await handle.signal('deploy', { strategy })
       return c.json({ status: 'signaled', message: `Deployment strategy '${strategy}' sent to workflow` })
@@ -605,6 +692,7 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
 
     // Try to terminate the Temporal workflow if it exists
     try {
+      if (!temporalClient) throw new Error('No Temporal')
       const handle = temporalClient.workflow.getHandle(projectId)
       await handle.terminate('Project deleted')
     } catch { /* workflow may not exist */ }

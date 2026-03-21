@@ -68,7 +68,7 @@ export function AgentTeam({ project }: Props) {
                     {roleMeta.emoji}
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-white">{roleMeta.name}</h3>
+                    <h3 className="text-sm font-semibold text-white">{agent.name}</h3>
                     <p className="text-xs text-zinc-500">{roleMeta.title}</p>
                   </div>
                 </div>

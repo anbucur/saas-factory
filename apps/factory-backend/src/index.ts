@@ -1,3 +1,5 @@
+import { loadEnvFile } from 'node:process'
+try { loadEnvFile() } catch { /* ignore if .env is missing */ }
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -8,6 +10,7 @@ import { setBroadcast, startWorker } from './worker.js'
 import { createProjectRoutes } from './routes/projects.js'
 import { AGENT_ROLES } from './agents/roles.js'
 import { isCodingAgentAvailable } from './agents/coding-agent.js'
+import { callLLM } from './agents/llm.js'
 
 // Initialize database
 initializeDatabase()
@@ -37,9 +40,15 @@ function broadcast(event: unknown) {
 setBroadcast(broadcast)
 
 // Connect to Temporal server and start the in-process worker
-const connection = await Connection.connect({ address: 'localhost:7233' })
-const temporalClient = new Client({ connection })
-await startWorker()
+let temporalClient: Client | undefined;
+try {
+  const connection = await Connection.connect({ address: 'localhost:7233' })
+  temporalClient = new Client({ connection })
+  await startWorker()
+  console.log('Temporal: Connected and worker started')
+} catch (error) {
+  console.error('Temporal: Could not connect to Temporal server. Workflows will not be available.')
+}
 
 // Health check
 app.get('/api/health', (c) => {
@@ -74,6 +83,20 @@ if (codingAgent.available) {
   console.log(`Coding Agent: ${codingAgent.name} (available)`)
 } else {
   console.log('Coding Agent: not available (using fallback mode)')
+}
+
+// LLM Health Check
+console.log('Checking LLM API health...')
+console.log('DEBUG API KEY IS:', process.env.MINIMAX_API_KEY ? 'Present (StartsWith: ' + process.env.MINIMAX_API_KEY.slice(0, 5) + ')' : 'UNDEFINED')
+try {
+  const llmStatus = await callLLM('You are a system health check. Just reply "OK".', [{role: 'user', content: 'Health Check'}], { maxTokens: 10 })
+  if (llmStatus && llmStatus.content && !llmStatus.content.includes('## Project Plan') && !llmStatus.content.includes('I have analyzed')) {
+    console.log('LLM API Health Check: OK ✅')
+  } else {
+    console.log('LLM API Health Check: USING FALLBACK MODE (Check your API key) ⚠️')
+  }
+} catch (error) {
+  console.log('LLM API Health Check: FAILED ❌', error)
 }
 
 const server = serve({

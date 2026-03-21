@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  alina-app:
+    build: .
+    container_name: alina-app
+    ports:
+      - "4000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped

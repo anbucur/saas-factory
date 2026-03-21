@@ -43,6 +43,7 @@ export function initializeDatabase() {
       status TEXT NOT NULL DEFAULT 'idle',
       current_task TEXT,
       progress REAL NOT NULL DEFAULT 0,
+      copy_index INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     );
 

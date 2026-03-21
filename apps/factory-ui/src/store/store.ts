@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { ProjectDetail, ProjectListItem, Agent, Task, Message, Artifact, ActivityLogEntry, WSEvent, AgentStatus } from '../types';
+import type { ProjectDetail, ProjectListItem, Task, Artifact, ActivityLogEntry, WSEvent, AgentStatus } from '../types';
+
 
 interface AppState {
   // Projects list
@@ -9,6 +10,10 @@ interface AppState {
   // Current project detail
   currentProject: ProjectDetail | null;
   setCurrentProject: (project: ProjectDetail | null) => void;
+
+  // Active steering directive
+  activeDirective: string | null;
+  setActiveDirective: (d: string | null) => void;
 
   // WebSocket connected
   wsConnected: boolean;
@@ -35,6 +40,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   currentProject: null,
   setCurrentProject: (project) => set({ currentProject: project }),
+
+  activeDirective: null,
+  setActiveDirective: (d) => set({ activeDirective: d }),
 
   wsConnected: false,
   setWsConnected: (connected) => set({ wsConnected: connected }),
@@ -139,12 +147,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       case 'phase:started': {
-        const { projectId, phase } = event.payload;
+        const { projectId, phase: _phase } = event.payload;
         if (state.currentProject?.id === projectId) {
           set({
             currentProject: {
               ...state.currentProject,
-              currentPhase: phase as any,
+              currentPhase: _phase as any,
             },
           });
         }
@@ -196,40 +204,56 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       case 'message:created': {
-        const { projectId, message } = event.payload;
+        const { projectId } = event.payload;
         if (state.currentProject?.id === projectId) {
-          set({
-            currentProject: {
-              ...state.currentProject,
-              // We don't store messages directly on project, but we can trigger a refetch
-            },
-          });
+          // Messages are stored per-conversation; no direct update needed
         }
         break;
       }
 
       case 'task:created': {
-        const { projectId, taskId, title, status, assigneeId, phase } = event.payload;
+        const { projectId, taskId, title, status, assigneeId, phase, description, priority, sprint, estimatedHours } = event.payload;
         if (state.currentProject?.id === projectId) {
-          const newTask: Task = {
-            id: taskId,
-            projectId,
-            assigneeId,
-            title,
-            description: '',
-            status: status as any,
-            priority: 'medium',
-            sprint: 1,
-            phase,
-            estimatedHours: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            completedAt: status === 'done' ? new Date().toISOString() : null,
-          };
+          // Don't duplicate if already present
+          const exists = state.currentProject.tasks.some(t => t.id === taskId);
+          if (!exists) {
+            const newTask: Task = {
+              id: taskId,
+              projectId,
+              assigneeId,
+              title,
+              description: description ?? '',
+              status: status as any,
+              priority: (priority as any) ?? 'medium',
+              sprint: sprint ?? 1,
+              phase,
+              estimatedHours: estimatedHours ?? null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              completedAt: status === 'done' ? new Date().toISOString() : null,
+            };
+            set({
+              currentProject: {
+                ...state.currentProject,
+                tasks: [...state.currentProject.tasks, newTask],
+              },
+            });
+          }
+        }
+        break;
+      }
+
+      case 'task:updated': {
+        const { projectId, taskId, status, completedAt } = event.payload;
+        if (state.currentProject?.id === projectId) {
           set({
             currentProject: {
               ...state.currentProject,
-              tasks: [...state.currentProject.tasks, newTask],
+              tasks: state.currentProject.tasks.map(t =>
+                t.id === taskId
+                  ? { ...t, status: status as any, completedAt: completedAt ?? t.completedAt, updatedAt: new Date().toISOString() }
+                  : t
+              ),
             },
           });
         }
@@ -301,6 +325,15 @@ export const useAppStore = create<AppState>((set, get) => ({
               logs: [...state.currentProject.logs, entry],
             },
           });
+        }
+        break;
+      }
+
+      case 'project:steered': {
+        const { directive } = event.payload;
+        set({ activeDirective: directive ?? null });
+        if (directive) {
+          state.addNotification(`PM Directive active: "${directive.substring(0, 60)}${directive.length > 60 ? '...' : ''}"`, 'info');
         }
         break;
       }

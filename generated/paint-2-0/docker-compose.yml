@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  paint-2-0-app:
+    build: .
+    container_name: paint-2-0-app
+    ports:
+      - "4000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped

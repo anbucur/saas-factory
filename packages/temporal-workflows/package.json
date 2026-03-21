@@ -7,25 +7,21 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
-    "@temporalio/client": "^1.15.0",
-    "@temporalio/workflow": "^1.15.0",
-    "@temporalio/worker": "^1.15.0",
     "@temporalio/activity": "^1.15.0",
-    "@temporalio/common": "^1.15.0"
+    "@temporalio/client": "^1.15.0",
+    "@temporalio/common": "^1.15.0",
+    "@temporalio/worker": "^1.15.0",
+    "@temporalio/workflow": "^1.15.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.0.0"
-  },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch src/index.ts",
-    "test": "vitest",
-    "test:run": "vitest run"
+    "vitest": "^4.1.0"
   }
 }

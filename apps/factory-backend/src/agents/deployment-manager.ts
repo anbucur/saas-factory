@@ -464,10 +464,12 @@ function findAvailablePort(startPort: number = 4000): number {
 
 function execCommand(cmd: string, cwd: string, timeout = 120_000): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    const proc = spawn('sh', ['-c', cmd], {
+    const isWin = process.platform === 'win32'
+    const proc = spawn(isWin ? 'cmd' : 'sh', [isWin ? '/c' : '-c', cmd], {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout,
+      shell: isWin,
     })
 
     let stdout = ''

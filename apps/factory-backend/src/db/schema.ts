@@ -17,6 +17,7 @@ export const agents = sqliteTable('agents', {
   projectId: text('project_id').notNull().references(() => projects.id),
   role: text('role', { enum: ['pm', 'ba', 'architect', 'frontend_dev', 'backend_dev', 'qa', 'devops'] }).notNull(),
   name: text('name').notNull(),
+  copyIndex: integer('copy_index').notNull().default(0), // 0 = primary, 1/2 = extra parallel copies
   status: text('status', { enum: ['idle', 'thinking', 'working', 'reviewing', 'blocked', 'done'] }).notNull().default('idle'),
   currentTask: text('current_task'),
   progress: real('progress').notNull().default(0),

@@ -3,6 +3,7 @@ import type { ProjectDetail, AgentRole, Message, Conversation } from '../../type
 import { AGENT_ROLE_META, PHASE_META } from '../../types';
 import { api } from '../../lib/api';
 import { MessageSquare, CheckCircle2, Clock } from 'lucide-react';
+import { MarkdownContent } from '../MarkdownContent';
 
 interface Props {
   project: ProjectDetail;
@@ -125,8 +126,8 @@ export function ConversationView({ project }: Props) {
                       {new Date(msg.createdAt).toLocaleTimeString()}
                     </span>
                   </div>
-                  <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed prose-sm">
-                    {msg.content}
+                  <div className="mt-2">
+                    <MarkdownContent content={msg.content} />
                   </div>
                 </div>
               );

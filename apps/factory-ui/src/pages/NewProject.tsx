@@ -37,7 +37,7 @@ const FEATURE_SUGGESTIONS = [
   'Two-Factor Authentication',
 ];
 
-type Step = 'basics' | 'stack' | 'features' | 'review';
+type Step = 'basics' | 'stack' | 'features' | 'team' | 'review';
 
 export function NewProject() {
   const navigate = useNavigate();
@@ -50,11 +50,15 @@ export function NewProject() {
   const [features, setFeatures] = useState<string[]>([]);
   const [customFeature, setCustomFeature] = useState('');
   const [billingMode, setBillingMode] = useState<'subscription' | 'usage' | 'none'>('none');
+  const [agentPoolSizes, setAgentPoolSizes] = useState<Record<string, number>>({
+    ba: 1, architect: 1, frontend_dev: 1, backend_dev: 1, qa: 1, devops: 1
+  });
 
   const steps: { id: Step; label: string }[] = [
     { id: 'basics', label: 'Basics' },
     { id: 'stack', label: 'Tech Stack' },
     { id: 'features', label: 'Features' },
+    { id: 'team', label: 'Agent Team' },
     { id: 'review', label: 'Review' },
   ];
 
@@ -81,7 +85,7 @@ export function NewProject() {
       const result = await api.createProject({
         name,
         description,
-        config: { stack, features, billingMode },
+        config: { stack, features, billingMode, agentPoolSizes },
       });
       navigate(`/project/${result.id}`);
     } catch (err: any) {
@@ -95,6 +99,7 @@ export function NewProject() {
       case 'basics': return name.trim().length > 0 && description.trim().length > 0;
       case 'stack': return stack.length > 0;
       case 'features': return true;
+      case 'team': return true;
       case 'review': return true;
     }
   }
@@ -258,6 +263,45 @@ export function NewProject() {
               >
                 Add
               </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'team' && (
+          <div>
+            <p className="text-sm text-zinc-400 mb-6">Allocate multiple agents to speed up parallelizable tasks. Project Manager is fixed at 1.</p>
+            <div className="space-y-6">
+              {[
+                { id: 'ba', label: 'Business Analysts', emoji: '📊' },
+                { id: 'architect', label: 'Solution Architects', emoji: '🏗️' },
+                { id: 'frontend_dev', label: 'Frontend Developers', emoji: '🎨' },
+                { id: 'backend_dev', label: 'Backend Developers', emoji: '⚙️' },
+                { id: 'qa', label: 'QA Engineers', emoji: '🧪' },
+                { id: 'devops', label: 'DevOps Engineers', emoji: '🚀' },
+              ].map(role => (
+                <div key={role.id} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-lg border border-zinc-700/50">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{role.emoji}</span>
+                    <div>
+                      <h4 className="text-sm font-medium text-white">{role.label}</h4>
+                      <p className="text-xs text-zinc-400 mt-0.5">Scale up to 3 agents</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="1"
+                      max="3"
+                      value={agentPoolSizes[role.id] || 1}
+                      onChange={(e) => setAgentPoolSizes(prev => ({ ...prev, [role.id]: parseInt(e.target.value) }))}
+                      className="w-32 accent-blue-500"
+                    />
+                    <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-semibold text-sm border border-blue-500/30">
+                      {agentPoolSizes[role.id] || 1}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
