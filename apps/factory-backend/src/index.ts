@@ -10,7 +10,9 @@ import { setBroadcast, startWorker } from './worker.js'
 import { createProjectRoutes } from './routes/projects.js'
 import { AGENT_ROLES } from './agents/roles.js'
 import { isCodingAgentAvailable } from './agents/coding-agent.js'
-import { callLLM } from './agents/llm.js'
+import { callLLM, setRuntimeApiKey } from './agents/llm.js'
+import { rateLimit } from './lib/rate-limit.js'
+import { requestId, logger } from './lib/request-id.js'
 
 // Initialize database
 initializeDatabase()
@@ -21,8 +23,15 @@ const app = new Hono()
 app.use('*', cors({
   origin: ['http://localhost:3000', 'http://localhost:5173'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Minimax-Api-Key'],
 }))
+
+// Rate limiting: 100 requests per minute per IP
+app.use('*', rateLimit({ windowMs: 60000, maxRequests: 100 }))
+
+// Request ID and structured logging
+app.use('*', requestId)
+app.use('*', logger())
 
 // Track connected WebSocket clients
 const clients = new Set<WebSocket>()
@@ -68,6 +77,16 @@ app.get('/api/agents/roles', (c) => {
 // Coding agent status
 app.get('/api/coding-agent/status', (c) => {
   return c.json(isCodingAgentAvailable())
+})
+
+// Runtime API key (set by frontend Settings)
+app.post('/api/settings/api-key', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  if (body.apiKey) {
+    setRuntimeApiKey(body.apiKey)
+    return c.json({ ok: true, message: 'API key set for this session' })
+  }
+  return c.json({ ok: false, error: 'No API key provided' }, 400)
 })
 
 // Mount project routes

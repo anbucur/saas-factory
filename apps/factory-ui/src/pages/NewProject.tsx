@@ -1,7 +1,64 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Rocket, Check, Code, Database, Shield, CreditCard, Layout, Server, Cloud, TestTube } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Rocket, Check, Code, Database, CreditCard, Layout, Server, Cloud, LayoutTemplate, ShoppingCart, BarChart3, Users, MessageSquare } from 'lucide-react';
 import { api } from '../lib/api';
+
+const PROJECT_TEMPLATES = [
+  {
+    id: 'saas-starter',
+    name: 'SaaS Starter',
+    description: 'Full-featured SaaS with auth, billing, dashboard, and team management',
+    icon: LayoutTemplate,
+    stack: ['react', 'node', 'postgres', 'tailwind', 'docker'],
+    features: ['User Authentication & Authorization', 'Billing & Subscriptions', 'Dashboard with Analytics', 'Role-based Access Control', 'Multi-tenancy'],
+    billingMode: 'subscription' as const,
+  },
+  {
+    id: 'ecommerce',
+    name: 'E-Commerce Platform',
+    description: 'Product catalog, cart, checkout, and order management',
+    icon: ShoppingCart,
+    stack: ['nextjs', 'node', 'postgres', 'tailwind', 'docker'],
+    features: ['User Authentication & Authorization', 'CRUD Operations', 'Billing & Subscriptions', 'File Upload', 'Email Notifications'],
+    billingMode: 'subscription' as const,
+  },
+  {
+    id: 'analytics-dashboard',
+    name: 'Analytics Dashboard',
+    description: 'Data visualization, reporting, and custom metrics',
+    icon: BarChart3,
+    stack: ['react', 'python', 'postgres', 'tailwind', 'docker'],
+    features: ['Dashboard with Analytics', 'Export to CSV/PDF', 'User Authentication & Authorization', 'Role-based Access Control'],
+    billingMode: 'usage' as const,
+  },
+  {
+    id: 'team-collaboration',
+    name: 'Team Collaboration',
+    description: 'Real-time messaging, task management, and file sharing',
+    icon: Users,
+    stack: ['react', 'node', 'postgres', 'redis', 'tailwind', 'docker'],
+    features: ['Real-time Notifications', 'CRUD Operations', 'File Upload', 'User Authentication & Authorization', 'Search & Filtering'],
+    billingMode: 'subscription' as const,
+  },
+  {
+    id: 'api-backend',
+    name: 'API Backend',
+    description: 'RESTful API with authentication, rate limiting, and documentation',
+    icon: MessageSquare,
+    stack: ['node', 'postgres', 'docker', 'github-actions'],
+    features: ['User Authentication & Authorization', 'API Rate Limiting', 'Audit Logging', 'Webhooks'],
+    billingMode: 'usage' as const,
+  },
+  {
+    id: 'blank',
+    name: 'Blank Project',
+    description: 'Start from scratch with no pre-selected options',
+    icon: LayoutTemplate,
+    stack: [],
+    features: [],
+    billingMode: 'none' as const,
+  },
+];
 
 const STACK_OPTIONS = [
   { id: 'react', label: 'React', icon: Code, category: 'Frontend' },
@@ -37,7 +94,7 @@ const FEATURE_SUGGESTIONS = [
   'Two-Factor Authentication',
 ];
 
-type Step = 'basics' | 'stack' | 'features' | 'team' | 'review';
+type Step = 'basics' | 'templates' | 'stack' | 'features' | 'team' | 'review';
 
 export function NewProject() {
   const navigate = useNavigate();
@@ -53,9 +110,11 @@ export function NewProject() {
   const [agentPoolSizes, setAgentPoolSizes] = useState<Record<string, number>>({
     ba: 1, architect: 1, frontend_dev: 1, backend_dev: 1, qa: 1, devops: 1
   });
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 
   const steps: { id: Step; label: string }[] = [
     { id: 'basics', label: 'Basics' },
+    { id: 'templates', label: 'Templates' },
     { id: 'stack', label: 'Tech Stack' },
     { id: 'features', label: 'Features' },
     { id: 'team', label: 'Agent Team' },
@@ -63,6 +122,22 @@ export function NewProject() {
   ];
 
   const currentStepIndex = steps.findIndex(s => s.id === step);
+
+  function applyTemplate(templateId: string) {
+    const template = PROJECT_TEMPLATES.find(t => t.id === templateId);
+    if (!template) return;
+    setSelectedTemplate(templateId);
+    setStack([...template.stack]);
+    setFeatures([...template.features]);
+    setBillingMode(template.billingMode);
+  }
+
+  function clearTemplate() {
+    setSelectedTemplate(null);
+    setStack([]);
+    setFeatures([]);
+    setBillingMode('none');
+  }
 
   function toggleStack(id: string) {
     setStack(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
@@ -97,6 +172,7 @@ export function NewProject() {
   function canProceed(): boolean {
     switch (step) {
       case 'basics': return name.trim().length > 0 && description.trim().length > 0;
+      case 'templates': return true;
       case 'stack': return stack.length > 0;
       case 'features': return true;
       case 'team': return true;
@@ -194,6 +270,57 @@ export function NewProject() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {step === 'templates' && (
+          <div>
+            <p className="text-sm text-zinc-400 mb-4">Choose a starting template or build from scratch</p>
+            <div className="grid grid-cols-2 gap-3">
+              {PROJECT_TEMPLATES.map((template) => {
+                const Icon = template.icon;
+                const isSelected = selectedTemplate === template.id;
+                return (
+                  <button
+                    key={template.id}
+                    onClick={() => isSelected ? clearTemplate() : applyTemplate(template.id)}
+                    className={`p-4 rounded-xl border text-left transition-all ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-500/10'
+                        : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-600'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-lg ${isSelected ? 'bg-blue-500/20' : 'bg-zinc-700'}`}>
+                        <Icon className={`w-5 h-5 ${isSelected ? 'text-blue-400' : 'text-zinc-400'}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-medium text-white">{template.name}</h4>
+                          {isSelected && <Check className="w-4 h-4 text-blue-400" />}
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-1">{template.description}</p>
+                        {isSelected && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {template.stack.slice(0, 3).map(s => (
+                              <span key={s} className="px-1.5 py-0.5 bg-zinc-700 rounded text-[10px] text-zinc-300">{s}</span>
+                            ))}
+                            {template.stack.length > 3 && (
+                              <span className="text-[10px] text-zinc-500">+{template.stack.length - 3}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedTemplate && (
+              <p className="text-xs text-blue-400 mt-3">
+                Template applied! Stack and features have been pre-filled. You can customize them in the next steps.
+              </p>
+            )}
           </div>
         )}
 

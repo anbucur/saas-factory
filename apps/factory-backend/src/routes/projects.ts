@@ -380,18 +380,22 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
     const projectAgents = db.select().from(agents).where(eq(agents.projectId, projectId)).all()
     const projectMessages = db.select().from(messages).where(eq(messages.projectId, projectId)).all()
 
-    // Calculate total duration
-    const startTime = project.createdAt ? new Date(project.createdAt).getTime() : 0
-    const endTime = project.completedAt ? new Date(project.completedAt).getTime() : Date.now()
-    const totalDurationMs = endTime - startTime
+    // Calculate total duration - only sum completed phase durations (not elapsed time for in-progress)
+    const totalDurationMs = metrics
+      .filter(m => m.status === 'completed' && m.completedAt)
+      .reduce((sum, m) => {
+        const started = new Date(m.startedAt).getTime()
+        const completed = new Date(m.completedAt!).getTime()
+        return sum + (completed - started)
+      }, 0)
 
     // Phase durations
     const phaseDurations = metrics.map(m => {
       const started = new Date(m.startedAt).getTime()
-      const completed = m.completedAt ? new Date(m.completedAt).getTime() : Date.now()
+      const completed = m.completedAt ? new Date(m.completedAt).getTime() : null
       return {
         phase: m.phase,
-        durationMs: completed - started,
+        durationMs: completed ? completed - started : null,
         status: m.status,
         agentDurations: JSON.parse(m.agentDurations || '{}'),
         taskCount: m.taskCount,

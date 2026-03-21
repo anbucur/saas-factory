@@ -3,8 +3,13 @@ import type { ProjectAnalytics, Deployment, DeploymentOption, StackInfo } from '
 const API_BASE = 'http://localhost:3010/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const storedKey = localStorage.getItem('minimax_api_key')
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (storedKey) {
+    headers['X-Minimax-Api-Key'] = storedKey
+  }
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   });
 
@@ -128,4 +133,11 @@ export const api = {
 
   // Health
   health: () => request<{ status: string; timestamp: string; codingAgent?: { available: boolean; name: string } }>('/health'),
+
+  // Settings - set runtime API key
+  setApiKey: (apiKey: string) =>
+    request<{ ok: boolean; message?: string }>('/settings/api-key', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey }),
+    }),
 };

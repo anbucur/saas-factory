@@ -3,6 +3,8 @@ import remarkGfm from 'remark-gfm';
 import { ChevronDown, Brain } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface Props {
   content: string;
@@ -84,23 +86,47 @@ export function MarkdownContent({ content, className = '' }: Props) {
               li: ({ children }) => (
                 <li className="text-sm text-zinc-300 leading-relaxed list-item">{children}</li>
               ),
-              code: ({ inline, children, ...props }: any) =>
-                inline ? (
-                  <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-cyan-300 font-mono text-xs" {...props}>
+              code: ({ inline, children, className, ...props }: any) => {
+                if (inline) {
+                  return (
+                    <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-cyan-300 font-mono text-xs" {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+                return (
+                  <code className={className} {...props}>
                     {children}
                   </code>
-                ) : (
-                  <code className="font-mono text-xs text-zinc-200" {...props}>
-                    {children}
-                  </code>
-                ),
-              pre: ({ children }) => (
-                <div className="relative group">
-                  <pre className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-4 overflow-x-auto mb-4 font-mono text-xs text-zinc-300">
-                    {children}
-                  </pre>
-                </div>
-              ),
+                );
+              },
+              pre: ({ children }) => {
+                const child = children as React.ReactElement<any>;
+                const className = child?.props?.className || '';
+                const match = /language-(\w+)/.exec(className);
+                const language = match ? match[1] : 'text';
+                const code = child?.props?.children || '';
+
+                return (
+                  <div className="relative group mb-4">
+                    <SyntaxHighlighter
+                      style={oneDark as any}
+                      language={language}
+                      PreTag="div"
+                      customStyle={{
+                        margin: 0,
+                        padding: '1rem',
+                        borderRadius: '0.75rem',
+                        border: '1px solid rgb(63 63 70)',
+                        background: 'rgb(24 24 27)',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      {String(code).replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                  </div>
+                );
+              },
               blockquote: ({ children }) => (
                 <blockquote className="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">
                   {children}

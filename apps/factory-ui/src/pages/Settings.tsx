@@ -1,14 +1,26 @@
 import { useState } from 'react';
 import { Settings as SettingsIcon, Key, Server, Palette } from 'lucide-react';
+import { api } from '../lib/api';
 
 export function Settings() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('minimax_api_key') || '');
   const [backendUrl, setBackendUrl] = useState(localStorage.getItem('backend_url') || 'http://localhost:3010');
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSave() {
+  async function handleSave() {
+    setError(null);
     localStorage.setItem('minimax_api_key', apiKey);
     localStorage.setItem('backend_url', backendUrl);
+
+    if (apiKey) {
+      try {
+        await api.setApiKey(apiKey);
+      } catch (err: any) {
+        setError(err.message || 'Failed to set API key on backend');
+      }
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -79,7 +91,8 @@ export function Settings() {
 
         {/* Save */}
         <div className="flex items-center justify-end gap-3">
-          {saved && <span className="text-sm text-emerald-400">Settings saved!</span>}
+          {error && <span className="text-sm text-red-400">{error}</span>}
+          {saved && !error && <span className="text-sm text-emerald-400">Settings saved!</span>}
           <button
             onClick={handleSave}
             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"

@@ -12,6 +12,7 @@ import { ActivityLog } from '../components/project/ActivityLog';
 import { AnalyticsView } from '../components/project/AnalyticsView';
 import { FileBrowser } from '../components/project/FileBrowser';
 import { DeploymentView } from '../components/project/DeploymentView';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 type Tab = 'overview' | 'team' | 'conversations' | 'board' | 'artifacts' | 'files' | 'deploy' | 'analytics' | 'logs';
 
@@ -241,15 +242,15 @@ export function ProjectDetail() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {activeTab === 'overview' && <ProjectOverview project={currentProject} />}
-        {activeTab === 'team' && <AgentTeam project={currentProject} />}
-        {activeTab === 'conversations' && <ConversationView project={currentProject} />}
-        {activeTab === 'board' && <SprintBoard project={currentProject} />}
-        {activeTab === 'artifacts' && <ArtifactsView project={currentProject} />}
-        {activeTab === 'files' && <FileBrowser project={currentProject} />}
-        {activeTab === 'deploy' && <DeploymentView project={currentProject} />}
-        {activeTab === 'analytics' && <AnalyticsView project={currentProject} />}
-        {activeTab === 'logs' && <ActivityLog project={currentProject} />}
+        {activeTab === 'overview' && <ErrorBoundary><ProjectOverview project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'team' && <ErrorBoundary><AgentTeam project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'conversations' && <ErrorBoundary><ConversationView project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'board' && <ErrorBoundary><SprintBoard project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'artifacts' && <ErrorBoundary><ArtifactsView project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'files' && <ErrorBoundary><FileBrowser project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'deploy' && <ErrorBoundary><DeploymentView project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'analytics' && <ErrorBoundary><AnalyticsView project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'logs' && <ErrorBoundary><ActivityLog project={currentProject} /></ErrorBoundary>}
       </div>
     </div>
   );
