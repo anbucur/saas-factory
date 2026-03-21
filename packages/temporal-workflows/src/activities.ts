@@ -1,106 +1,65 @@
 /**
- * Temporal Activity stubs — type contracts for the buildSaaS workflow.
- * Actual implementations live in apps/factory-backend/src/worker.ts.
+ * Temporal Activity type stubs for SaaS Factory workflow.
+ * Actual implementations live in apps/factory-backend/src/worker.ts
  */
 
-// ── generateSpec ────────────────────────────────────────────────────────────
-
-export interface GenerateSpecInput {
-  name: string
-  description: string
-  features: string[]
-  buildId: string
+export interface SetupPhaseInput {
+  projectId: string
+  phase: string
 }
 
-export interface GenerateSpecOutput {
-  spec: string
-  tokens: number
+export interface SetupPhaseOutput {
+  conversationId: string
 }
 
-export async function generateSpec(_input: GenerateSpecInput): Promise<GenerateSpecOutput> {
+export interface RunAgentWorkInput {
+  projectId: string
+  phase: string
+  role: string
+  conversationId: string
+}
+
+export interface RunCollaborationRoundInput {
+  projectId: string
+  phase: string
+  conversationId: string
+}
+
+export interface CompletePhaseInput {
+  projectId: string
+  phase: string
+  conversationId: string
+}
+
+export interface CompleteProjectInput {
+  projectId: string
+}
+
+export interface FailProjectInput {
+  projectId: string
+  error: string
+}
+
+export async function setupPhase(_input: SetupPhaseInput): Promise<SetupPhaseOutput> {
   throw new Error('Activity stub — implemented in worker')
 }
 
-// ── scaffoldProject ──────────────────────────────────────────────────────────
-
-export interface ScaffoldProjectInput {
-  projectName: string
-  spec: string
-  buildId: string
-}
-
-export interface ScaffoldProjectOutput {
-  projectPath: string
-  stack: string[]
-}
-
-export async function scaffoldProject(
-  _input: ScaffoldProjectInput
-): Promise<ScaffoldProjectOutput> {
+export async function runAgentWork(_input: RunAgentWorkInput): Promise<void> {
   throw new Error('Activity stub — implemented in worker')
 }
 
-// ── writeCode ────────────────────────────────────────────────────────────────
-
-export interface WriteCodeInput {
-  projectPath: string
-  spec: string
-  buildId: string
-}
-
-export interface WriteCodeOutput {
-  files: string[]
-}
-
-export async function writeCode(_input: WriteCodeInput): Promise<WriteCodeOutput> {
+export async function runCollaborationRound(_input: RunCollaborationRoundInput): Promise<void> {
   throw new Error('Activity stub — implemented in worker')
 }
 
-// ── buildUI ──────────────────────────────────────────────────────────────────
-
-export interface BuildUIInput {
-  projectPath: string
-  buildId: string
-}
-
-export interface BuildUIOutput {
-  components: number
-  pages: string[]
-  buildPath: string
-}
-
-export async function buildUI(_input: BuildUIInput): Promise<BuildUIOutput> {
+export async function completePhase(_input: CompletePhaseInput): Promise<void> {
   throw new Error('Activity stub — implemented in worker')
 }
 
-// ── runTests ─────────────────────────────────────────────────────────────────
-
-export interface RunTestsInput {
-  projectPath: string
-  buildId: string
-}
-
-export interface RunTestsOutput {
-  passed: boolean
-  checks: string[]
-}
-
-export async function runTests(_input: RunTestsInput): Promise<RunTestsOutput> {
+export async function completeProject(_input: CompleteProjectInput): Promise<void> {
   throw new Error('Activity stub — implemented in worker')
 }
 
-// ── deploy ───────────────────────────────────────────────────────────────────
-
-export interface DeployInput {
-  projectName: string
-  buildId: string
-}
-
-export interface DeployOutput {
-  url: string
-  region: string
-}
-
-export async function deploy(_input: DeployInput): Promise<DeployOutput> {
+export async function failProject(_input: FailProjectInput): Promise<void> {
   throw new Error('Activity stub — implemented in worker')
 }

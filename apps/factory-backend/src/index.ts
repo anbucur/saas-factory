@@ -2,8 +2,9 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { WebSocketServer, WebSocket } from 'ws'
+import { Client, Connection } from '@temporalio/client'
 import { initializeDatabase } from './db/index.js'
-import { AgentEngine } from './agents/engine.js'
+import { setBroadcast, startWorker } from './worker.js'
 import { createProjectRoutes } from './routes/projects.js'
 import { AGENT_ROLES } from './agents/roles.js'
 import { isCodingAgentAvailable } from './agents/coding-agent.js'
@@ -23,7 +24,7 @@ app.use('*', cors({
 // Track connected WebSocket clients
 const clients = new Set<WebSocket>()
 
-function broadcast(event: object) {
+function broadcast(event: unknown) {
   const message = JSON.stringify(event)
   clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
@@ -32,8 +33,13 @@ function broadcast(event: object) {
   })
 }
 
-// Create engine with real broadcast
-const engine = new AgentEngine(broadcast)
+// Wire broadcast into Temporal worker activities
+setBroadcast(broadcast)
+
+// Connect to Temporal server and start the in-process worker
+const connection = await Connection.connect({ address: 'localhost:7233' })
+const temporalClient = new Client({ connection })
+await startWorker()
 
 // Health check
 app.get('/api/health', (c) => {
@@ -56,11 +62,12 @@ app.get('/api/coding-agent/status', (c) => {
 })
 
 // Mount project routes
-app.route('/api/projects', createProjectRoutes(engine))
+app.route('/api/projects', createProjectRoutes(broadcast, temporalClient))
 
 // Start HTTP server
 const port = 3010
 console.log(`SaaS Factory API running on http://localhost:${port}`)
+console.log('Temporal UI: http://localhost:8080')
 
 const codingAgent = isCodingAgentAvailable()
 if (codingAgent.available) {
@@ -102,4 +109,4 @@ server.on('upgrade', (request, socket, head) => {
   })
 })
 
-export { app, engine }
+export { app }

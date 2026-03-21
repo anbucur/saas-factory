@@ -1,84 +1,99 @@
-import { proxyActivities, workflowInfo } from '@temporalio/workflow'
-import type * as activities from './activities'
-
-// All activities share the same proxy config: 10 min timeout, 3 retries
-const { generateSpec, scaffoldProject, writeCode, buildUI, runTests, deploy } =
-  proxyActivities<typeof activities>({
-    startToCloseTimeout: '10m',
-    retry: { maximumAttempts: 3 },
-  })
-
-export interface BuildSpec {
-  name: string
-  description: string
-  features: string[]
-  billingMode: 'subscription' | 'usage' | 'none'
-}
-
-export interface BuildResult {
-  success: boolean
-  url?: string
-  error?: string
-}
-
 /**
- * Main SaaS build workflow — orchestrates 4 sequential phases:
- *   PoC (generateSpec → scaffoldProject)
- *   Enhance (writeCode → buildUI)
- *   Security (runTests)
- *   Prod (deploy)
+ * SaaS Factory - Single Temporal Workflow
  *
- * The workflowId is used as the buildId so every broadcast event carries
- * the same identifier the frontend receives from POST /api/builds.
+ * Orchestrates the full 5-phase, 7-agent build pipeline:
+ *   requirements → architecture → development → testing → deployment
+ *
+ * Features:
+ * - Automatic retry (3 attempts, exponential backoff) for every activity
+ * - Pause/resume via Temporal signals
+ * - FE dev + BE dev run in parallel during development
+ * - FE dev + BE dev run in parallel during bug fixes in testing
+ * - PM collaboration review after each phase
  */
-export async function buildSaaS(spec: BuildSpec): Promise<BuildResult> {
-  const buildId = workflowInfo().workflowId
-  const projectName = spec.name.toLowerCase().replace(/\s+/g, '-')
+
+import { proxyActivities, setHandler, defineSignal, condition } from '@temporalio/workflow'
+import type * as activities from './activities.js'
+
+const {
+  setupPhase,
+  runAgentWork,
+  runCollaborationRound,
+  completePhase,
+  completeProject,
+  failProject,
+} = proxyActivities<typeof activities>({
+  startToCloseTimeout: '30m',
+  retry: {
+    initialInterval: '5s',
+    maximumInterval: '2m',
+    backoffCoefficient: 2,
+    maximumAttempts: 3,
+  },
+})
+
+export const pauseSignal = defineSignal('pause')
+export const resumeSignal = defineSignal('resume')
+
+export async function buildSaaSProject(input: { projectId: string }): Promise<void> {
+  const { projectId } = input
+
+  let paused = false
+  setHandler(pauseSignal, () => { paused = true })
+  setHandler(resumeSignal, () => { paused = false })
+
+  async function waitIfPaused() {
+    if (paused) await condition(() => !paused)
+  }
 
   try {
-    // === Phase 1: PoC ===
-    const specResult = await generateSpec({
-      name: spec.name,
-      description: spec.description,
-      features: spec.features,
-      buildId,
-    })
+    // ── Phase 1: Requirements ──────────────────────────────────────────────
+    const { conversationId: reqConvId } = await setupPhase({ projectId, phase: 'requirements' })
+    await runAgentWork({ projectId, phase: 'requirements', role: 'pm', conversationId: reqConvId })
+    await runAgentWork({ projectId, phase: 'requirements', role: 'ba', conversationId: reqConvId })
+    await runCollaborationRound({ projectId, phase: 'requirements', conversationId: reqConvId })
+    await completePhase({ projectId, phase: 'requirements', conversationId: reqConvId })
+    await waitIfPaused()
 
-    const scaffoldResult = await scaffoldProject({
-      projectName,
-      spec: specResult.spec,
-      buildId,
-    })
+    // ── Phase 2: Architecture ──────────────────────────────────────────────
+    const { conversationId: archConvId } = await setupPhase({ projectId, phase: 'architecture' })
+    await runAgentWork({ projectId, phase: 'architecture', role: 'architect', conversationId: archConvId })
+    await runAgentWork({ projectId, phase: 'architecture', role: 'pm', conversationId: archConvId })
+    await runCollaborationRound({ projectId, phase: 'architecture', conversationId: archConvId })
+    await completePhase({ projectId, phase: 'architecture', conversationId: archConvId })
+    await waitIfPaused()
 
-    // === Phase 2: Enhance ===
-    await writeCode({
-      projectPath: scaffoldResult.projectPath,
-      spec: specResult.spec,
-      buildId,
-    })
+    // ── Phase 3: Development (FE + BE in parallel) ─────────────────────────
+    const { conversationId: devConvId } = await setupPhase({ projectId, phase: 'development' })
+    await runAgentWork({ projectId, phase: 'development', role: 'pm', conversationId: devConvId })
+    await Promise.all([
+      runAgentWork({ projectId, phase: 'development', role: 'frontend_dev', conversationId: devConvId }),
+      runAgentWork({ projectId, phase: 'development', role: 'backend_dev', conversationId: devConvId }),
+    ])
+    await runCollaborationRound({ projectId, phase: 'development', conversationId: devConvId })
+    await completePhase({ projectId, phase: 'development', conversationId: devConvId })
+    await waitIfPaused()
 
-    await buildUI({
-      projectPath: scaffoldResult.projectPath,
-      buildId,
-    })
+    // ── Phase 4: Testing (QA → FE+BE fix in parallel → PM review) ─────────
+    const { conversationId: testConvId } = await setupPhase({ projectId, phase: 'testing' })
+    await runAgentWork({ projectId, phase: 'testing', role: 'qa', conversationId: testConvId })
+    await Promise.all([
+      runAgentWork({ projectId, phase: 'testing', role: 'frontend_dev', conversationId: testConvId }),
+      runAgentWork({ projectId, phase: 'testing', role: 'backend_dev', conversationId: testConvId }),
+    ])
+    await runAgentWork({ projectId, phase: 'testing', role: 'pm', conversationId: testConvId })
+    await completePhase({ projectId, phase: 'testing', conversationId: testConvId })
+    await waitIfPaused()
 
-    // === Phase 3: Security ===
-    const testResult = await runTests({
-      projectPath: scaffoldResult.projectPath,
-      buildId,
-    })
+    // ── Phase 5: Deployment ────────────────────────────────────────────────
+    const { conversationId: deployConvId } = await setupPhase({ projectId, phase: 'deployment' })
+    await runAgentWork({ projectId, phase: 'deployment', role: 'devops', conversationId: deployConvId })
+    await runAgentWork({ projectId, phase: 'deployment', role: 'pm', conversationId: deployConvId })
+    await completePhase({ projectId, phase: 'deployment', conversationId: deployConvId })
 
-    if (!testResult.passed) {
-      console.warn(`[${buildId.slice(0, 8)}] Tests did not fully pass: ${testResult.checks.join(', ')}`)
-    }
-
-    // === Phase 4: Prod ===
-    const deployResult = await deploy({ projectName, buildId })
-
-    console.log(`✅ Build complete: ${deployResult.url}`)
-    return { success: true, url: deployResult.url }
-  } catch (error) {
-    console.error('Build failed:', error)
-    return { success: false, error: String(error) }
+    await completeProject({ projectId })
+  } catch (err) {
+    await failProject({ projectId, error: String(err) })
+    throw err
   }
 }

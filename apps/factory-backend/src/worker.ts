@@ -1,1067 +1,553 @@
 /**
  * Temporal Worker for SaaS Factory
- * Connects to local Temporal server and executes build workflow activities
+ *
+ * Registers all activity implementations and connects to the Temporal server.
+ * Activities contain the actual agent orchestration logic (LLM calls, DB writes,
+ * WebSocket broadcasts) that was previously in AgentEngine.
+ *
+ * The broadcast function is injected by index.ts via setBroadcast() before
+ * the worker starts, allowing activities to push real-time events to clients.
  */
 
 import { createRequire } from 'node:module'
 import { Worker } from '@temporalio/worker'
-import * as fs from 'node:fs/promises'
-import * as path from 'node:path'
-import { exec } from 'node:child_process'
+import { v4 as uuid } from 'uuid'
+import { db } from './db/index.js'
+import {
+  projects,
+  agents,
+  conversations,
+  messages,
+  tasks,
+  artifacts,
+  activityLog,
+} from './db/schema.js'
+import { eq } from 'drizzle-orm'
+import { AGENT_ROLES } from './agents/roles.js'
+import { callLLM } from './agents/llm.js'
+import { runCodingAgent, isCodingAgentAvailable } from './agents/coding-agent.js'
+import type { AgentRole } from './agents/roles.js'
 
 const require = createRequire(import.meta.url)
-import { promisify } from 'node:util'
 
-const execAsync = promisify(exec)
+/** Roles that invoke Claude Code / Opencode for actual code generation */
+const CODING_ROLES: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops']
 
-import * as templates from './code-templates.js'
+/** Roles that invoke the coding agent during the testing phase */
+const TESTING_ROLES: AgentRole[] = ['qa']
 
-// ============================================================================
-// Types
-// ============================================================================
+// ── Broadcast injection ───────────────────────────────────────────────────────
 
-export interface AgentEvent {
-  type:
-    | 'agent:spawn'
-    | 'agent:complete'
-    | 'phase:start'
-    | 'phase:complete'
-    | 'llm:call'
-    | 'llm:response'
-    | 'build:log'
-    | 'build:complete'
-    | 'build:error'
-  payload: Record<string, unknown>
-  timestamp?: number
+let _broadcast: (event: unknown) => void = () => {}
+
+/** Called by index.ts to wire in the WebSocket broadcast function before workers start. */
+export function setBroadcast(fn: (event: unknown) => void): void {
+  _broadcast = fn
 }
 
-export interface GenerateSpecInput {
-  name: string
-  description: string
-  features: string[]
-  buildId: string
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+function logActivity(
+  projectId: string,
+  agentId: string | null,
+  agentRole: string | null,
+  action: string,
+  details: string,
+  logType: string,
+  phase: string | null,
+): void {
+  const id = uuid()
+  db.insert(activityLog).values({
+    id,
+    projectId,
+    agentId,
+    agentRole,
+    action,
+    details,
+    logType: logType as any,
+    phase,
+    createdAt: new Date(),
+  }).run()
+  _broadcast({
+    type: 'activity:log',
+    payload: {
+      projectId, id, agentId, agentRole, action, details, logType, phase,
+      createdAt: new Date().toISOString(),
+    },
+  })
 }
 
-export interface GenerateSpecOutput {
-  spec: string
-  tokens: number
+function getTaskDescription(phase: string, role: string): string {
+  const map: Record<string, Record<string, string>> = {
+    requirements: {
+      pm: 'Creating project plan and sprint structure',
+      ba: 'Analyzing requirements and writing user stories',
+    },
+    architecture: {
+      architect: 'Designing system architecture and API contracts',
+      pm: 'Reviewing architecture proposal',
+    },
+    development: {
+      pm: 'Coordinating development team',
+      frontend_dev: 'Building UI components and pages',
+      backend_dev: 'Implementing API endpoints and database',
+    },
+    testing: {
+      qa: 'Running tests and creating test reports',
+      frontend_dev: 'Fixing frontend bugs',
+      backend_dev: 'Fixing backend bugs',
+      pm: 'Reviewing test results',
+    },
+    deployment: {
+      devops: 'Setting up CI/CD and deploying',
+      pm: 'Verifying launch checklist',
+    },
+  }
+  return map[phase]?.[role] ?? `Working on ${phase}`
 }
 
-export interface ScaffoldProjectInput {
-  projectName: string
-  spec: string
-  buildId: string
+function getPhasePrompt(phase: string, role: string): string {
+  const base = `Please perform your ${phase} phase responsibilities for this project.`
+  if (phase === 'requirements') {
+    if (role === 'pm') return `${base} Create a project plan with sprints, milestones, and team assignments. Include risk assessment and timeline estimates.`
+    if (role === 'ba') return `${base} Analyze the project description and create detailed requirements, user stories with acceptance criteria, and identify edge cases. Include data model suggestions.`
+  }
+  if (phase === 'architecture') {
+    if (role === 'pm') return `${base} Review the architecture proposal and provide feedback on feasibility, timeline impact, and resource requirements.`
+    if (role === 'architect') return `${base} Design the system architecture, choose the technology stack with rationale, define API contracts with request/response schemas, and create the database schema. Include component diagrams.`
+  }
+  if (phase === 'development') {
+    if (role === 'pm') return `${base} Track development progress, identify any blockers, and coordinate between frontend and backend developers.`
+    if (role === 'frontend_dev') return `${base} Implement the frontend: set up the project structure, create reusable UI components, implement all pages with routing, add state management, and connect to backend APIs. Write actual working code.`
+    if (role === 'backend_dev') return `${base} Implement the backend: set up the server framework, create database models and migrations, implement all API endpoints with validation, add authentication middleware, and error handling. Write actual working code.`
+  }
+  if (phase === 'testing') {
+    if (role === 'pm') return `${base} Review test results, prioritize bug fixes, and determine readiness for deployment.`
+    if (role === 'qa') return `${base} Create comprehensive test plans, write automated tests (unit, integration, e2e), perform security audit, and report all issues found with severity levels and reproduction steps.`
+    if (role === 'frontend_dev') return `${base} Review and fix any frontend bugs found during testing. Add missing error handling and edge case coverage.`
+    if (role === 'backend_dev') return `${base} Review and fix any backend bugs found during testing. Add missing validation and error handling.`
+  }
+  if (phase === 'deployment') {
+    if (role === 'pm') return `${base} Coordinate the deployment process, verify the launch checklist, and confirm all quality gates have been passed.`
+    if (role === 'devops') return `${base} Set up the deployment pipeline with Docker, create CI/CD configuration (GitHub Actions), configure monitoring and logging, and deploy to production. Include rollback procedures.`
+  }
+  return base
 }
 
-export interface ScaffoldProjectOutput {
-  projectPath: string
-  stack: string[]
+function getMessageType(phase: string, role: string): string {
+  if (role === 'pm') return 'decision'
+  if (phase === 'requirements' || phase === 'architecture') return 'discussion'
+  if (phase === 'testing') return 'review'
+  return 'task_update'
 }
 
-export interface WriteCodeInput {
-  projectPath: string
-  spec: string
-  buildId: string
+function getArtifactType(phase: string, role: string): string | null {
+  if (phase === 'requirements' && role === 'ba') return 'spec'
+  if (phase === 'requirements' && role === 'pm') return 'documentation'
+  if (phase === 'architecture' && role === 'architect') return 'architecture'
+  if (phase === 'development' && (role === 'frontend_dev' || role === 'backend_dev')) return 'code'
+  if (phase === 'testing' && role === 'qa') return 'test_report'
+  if (phase === 'deployment' && role === 'devops') return 'deployment_config'
+  return null
 }
 
-export interface WriteCodeOutput {
-  files: string[]
+const TASK_TEMPLATES: Record<string, Record<string, Array<{
+  title: string; description: string; priority: string; sprint: number; hours: number
+}>>> = {
+  requirements: {
+    pm: [
+      { title: 'Create project plan', description: 'Define sprints, milestones and deliverables', priority: 'high', sprint: 1, hours: 4 },
+      { title: 'Define team allocation', description: 'Assign team members to phases', priority: 'high', sprint: 1, hours: 2 },
+    ],
+    ba: [
+      { title: 'Gather requirements', description: 'Document functional and non-functional requirements', priority: 'critical', sprint: 1, hours: 8 },
+      { title: 'Create user stories', description: 'Write user stories with acceptance criteria', priority: 'high', sprint: 1, hours: 6 },
+      { title: 'Define data model', description: 'Design initial data model', priority: 'high', sprint: 1, hours: 4 },
+    ],
+  },
+  architecture: {
+    architect: [
+      { title: 'Design system architecture', description: 'Create architecture diagrams and component design', priority: 'critical', sprint: 1, hours: 8 },
+      { title: 'Define API contracts', description: 'Design REST API endpoints and schemas', priority: 'high', sprint: 1, hours: 6 },
+      { title: 'Design database schema', description: 'Create normalized database schema', priority: 'high', sprint: 1, hours: 4 },
+      { title: 'Security architecture', description: 'Define auth, encryption, and security measures', priority: 'high', sprint: 1, hours: 4 },
+    ],
+    pm: [
+      { title: 'Review architecture', description: 'Review and approve architecture decisions', priority: 'high', sprint: 1, hours: 2 },
+    ],
+  },
+  development: {
+    frontend_dev: [
+      { title: 'Set up frontend project', description: 'Initialize React project with routing and state management', priority: 'high', sprint: 2, hours: 4 },
+      { title: 'Build UI components', description: 'Create reusable UI component library', priority: 'high', sprint: 2, hours: 8 },
+      { title: 'Implement pages', description: 'Build all application pages', priority: 'high', sprint: 2, hours: 12 },
+      { title: 'API integration', description: 'Connect frontend to backend APIs', priority: 'high', sprint: 2, hours: 6 },
+    ],
+    backend_dev: [
+      { title: 'Set up backend project', description: 'Initialize API server with middleware', priority: 'high', sprint: 2, hours: 4 },
+      { title: 'Implement database layer', description: 'Create database models and migrations', priority: 'high', sprint: 2, hours: 6 },
+      { title: 'Build API endpoints', description: 'Implement all REST endpoints', priority: 'high', sprint: 2, hours: 12 },
+      { title: 'Authentication system', description: 'Implement JWT auth flow', priority: 'critical', sprint: 2, hours: 6 },
+    ],
+    pm: [
+      { title: 'Track development progress', description: 'Monitor sprint progress and resolve blockers', priority: 'medium', sprint: 2, hours: 4 },
+    ],
+  },
+  testing: {
+    qa: [
+      { title: 'Create test plan', description: 'Define test strategy and test cases', priority: 'high', sprint: 3, hours: 4 },
+      { title: 'Write unit tests', description: 'Write unit tests for critical functions', priority: 'high', sprint: 3, hours: 8 },
+      { title: 'Write integration tests', description: 'Write integration tests for API endpoints', priority: 'high', sprint: 3, hours: 6 },
+      { title: 'Security testing', description: 'Perform security audit', priority: 'critical', sprint: 3, hours: 4 },
+    ],
+    pm: [
+      { title: 'Review test results', description: 'Review QA findings and prioritize fixes', priority: 'high', sprint: 3, hours: 2 },
+    ],
+    frontend_dev: [
+      { title: 'Fix frontend bugs', description: 'Address bugs found during QA', priority: 'high', sprint: 3, hours: 4 },
+    ],
+    backend_dev: [
+      { title: 'Fix backend bugs', description: 'Address bugs found during QA', priority: 'high', sprint: 3, hours: 4 },
+    ],
+  },
+  deployment: {
+    devops: [
+      { title: 'Docker configuration', description: 'Create Dockerfiles and docker-compose', priority: 'high', sprint: 4, hours: 4 },
+      { title: 'CI/CD pipeline', description: 'Set up GitHub Actions pipeline', priority: 'high', sprint: 4, hours: 6 },
+      { title: 'Deploy to production', description: 'Deploy application to production environment', priority: 'critical', sprint: 4, hours: 4 },
+      { title: 'Monitoring setup', description: 'Configure logging and monitoring', priority: 'medium', sprint: 4, hours: 4 },
+    ],
+    pm: [
+      { title: 'Launch checklist', description: 'Verify all launch criteria met', priority: 'critical', sprint: 4, hours: 2 },
+    ],
+  },
 }
 
-export interface BuildUIInput {
-  projectPath: string
-  buildId: string
+async function createTasksFromWork(projectId: string, agentRecord: { id: string; role: string }, phase: string): Promise<void> {
+  const now = new Date()
+  const templates = TASK_TEMPLATES[phase]?.[agentRecord.role] ?? []
+  for (const template of templates) {
+    const taskId = uuid()
+    db.insert(tasks).values({
+      id: taskId,
+      projectId,
+      assigneeId: agentRecord.id,
+      title: template.title,
+      description: template.description,
+      status: 'done',
+      priority: template.priority as any,
+      sprint: template.sprint,
+      phase,
+      estimatedHours: template.hours,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: now,
+    }).run()
+    _broadcast({
+      type: 'task:created',
+      payload: { projectId, taskId, title: template.title, status: 'done', assigneeId: agentRecord.id, phase },
+    })
+  }
 }
 
-export interface BuildUIOutput {
-  components: number
-  pages: string[]
-  buildPath: string
+// ── Activities ────────────────────────────────────────────────────────────────
+
+export async function setupPhase(input: { projectId: string; phase: string }): Promise<{ conversationId: string }> {
+  const { projectId, phase } = input
+
+  db.update(projects)
+    .set({ currentPhase: phase as any, updatedAt: new Date() })
+    .where(eq(projects.id, projectId))
+    .run()
+
+  _broadcast({ type: 'phase:started', payload: { projectId, phase } })
+  logActivity(projectId, null, null, `Phase started: ${phase}`, `Entering ${phase} phase`, 'milestone', phase)
+
+  const conversationId = uuid()
+  const title = `${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase Discussion`
+  db.insert(conversations).values({
+    id: conversationId,
+    projectId,
+    title,
+    phase,
+    status: 'active',
+    createdAt: new Date(),
+  }).run()
+
+  _broadcast({ type: 'conversation:created', payload: { projectId, conversationId, title, phase } })
+  return { conversationId }
 }
 
-export interface RunTestsInput {
-  projectPath: string
-  buildId: string
-}
+export async function runAgentWork(input: {
+  projectId: string
+  phase: string
+  role: string
+  conversationId: string
+}): Promise<void> {
+  const { projectId, phase, role, conversationId } = input
 
-export interface RunTestsOutput {
-  passed: boolean
-  checks: string[]
-}
+  const roleConfig = AGENT_ROLES[role as AgentRole]
+  if (!roleConfig) throw new Error(`Unknown agent role: ${role}`)
 
-export interface DeployInput {
-  projectName: string
-  buildId: string
-}
+  const agentRecord = db.select().from(agents)
+    .where(eq(agents.projectId, projectId))
+    .all()
+    .find(a => a.role === role)
+  if (!agentRecord) throw new Error(`Agent ${role} not found for project ${projectId}`)
 
-export interface DeployOutput {
-  url: string
-  region: string
-}
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+  if (!project) throw new Error(`Project ${projectId} not found`)
 
-// ============================================================================
-// Event Broadcasting (Worker → Backend → WebSocket)
-// ============================================================================
+  // thinking
+  db.update(agents)
+    .set({ status: 'thinking', currentTask: `Analyzing ${phase} requirements`, progress: 0 })
+    .where(eq(agents.id, agentRecord.id))
+    .run()
+  _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'thinking', task: `Analyzing ${phase} requirements` } })
 
-const BACKEND_URL = 'http://localhost:3010'
+  // Build context from DB
+  const previousMessages = db.select().from(messages).where(eq(messages.projectId, projectId)).all()
+  const existingArtifacts = db.select().from(artifacts).where(eq(artifacts.projectId, projectId)).all()
 
-async function broadcastEvent(event: AgentEvent): Promise<void> {
-  const payload = { ...event, timestamp: Date.now() }
-  const maxRetries = 3
-  let delay = 500
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  const contextParts = [
+    `Project: ${project.name}`,
+    `Description: ${project.description}`,
+    `Current Phase: ${phase}`,
+    `Your Role: ${roleConfig.name}`,
+  ]
+  if (project.config && project.config !== '{}') {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const config = JSON.parse(project.config)
+      if (config.stack?.length) contextParts.push(`Tech Stack: ${config.stack.join(', ')}`)
+      if (config.features?.length) contextParts.push(`Features: ${config.features.join(', ')}`)
+    } catch { /* ignore bad JSON */ }
+  }
+  if (existingArtifacts.length > 0) {
+    contextParts.push('\n--- Previous Artifacts ---')
+    for (const artifact of existingArtifacts.slice(-5)) {
+      contextParts.push(`[${artifact.type}] ${artifact.title}:\n${artifact.content.substring(0, 1500)}`)
+    }
+  }
+  if (previousMessages.length > 0) {
+    contextParts.push('\n--- Recent Team Discussions ---')
+    for (const msg of previousMessages.slice(-10)) {
+      contextParts.push(`[${msg.agentRole}]: ${msg.content.substring(0, 300)}`)
+    }
+  }
+
+  const context = contextParts.join('\n')
+  const prompt = getPhasePrompt(phase, role)
+  const taskDesc = getTaskDescription(phase, role)
+
+  // working
+  db.update(agents)
+    .set({ status: 'working', progress: 20, currentTask: taskDesc })
+    .where(eq(agents.id, agentRecord.id))
+    .run()
+  _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'working', task: taskDesc } })
+  _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: 20, status: 'working' } })
+
+  let responseContent: string
+  let usedCodingAgent = false
+
+  const shouldUseCodingAgent =
+    (CODING_ROLES.includes(role as AgentRole) && phase === 'development') ||
+    (TESTING_ROLES.includes(role as AgentRole) && phase === 'testing')
+
+  if (shouldUseCodingAgent) {
+    const codingAgent = isCodingAgentAvailable()
+    if (codingAgent.available) {
+      logActivity(projectId, agentRecord.id, role, `Using ${codingAgent.name}`, `${roleConfig.name} is using ${codingAgent.name} to write code`, 'info', phase)
+
+      const planResponse = await callLLM(roleConfig.systemPrompt, [
+        { role: 'user', content: `${context}\n\n${prompt}\n\nProvide a detailed implementation plan with specific files to create and their contents. Be very specific about the code structure.` },
+      ])
+
+      db.update(agents).set({ progress: 40, currentTask: `Writing code with ${codingAgent.name}` }).where(eq(agents.id, agentRecord.id)).run()
+      _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: 40, status: 'working' } })
+
+      const codingResult = await runCodingAgent({
+        projectId,
+        projectName: project.name,
+        task: `${prompt}\n\nHere is the implementation plan from the team:\n${planResponse.content}`,
+        context,
       })
-      if (res.ok) return
-      // Non-2xx — treat as transient failure
-      console.warn(`[Worker] Broadcast attempt ${attempt} failed: HTTP ${res.status}`)
-    } catch (err) {
-      if (attempt === maxRetries) {
-        console.warn(`[Worker] Failed to broadcast event after ${maxRetries} attempts:`, err)
-        return
-      }
-    }
-    await new Promise((r) => setTimeout(r, delay))
-    delay *= 2
-  }
-}
 
-function log(buildId: string, message: string): void {
-  console.log(`[${buildId.slice(0, 8)}] ${message}`)
-}
-
-// ============================================================================
-// LLM Integration (MiniMax)
-// ============================================================================
-
-async function generateWithLLM(
-  prompt: string,
-  buildId: string
-): Promise<{ content: string; tokens: number }> {
-  const apiKey = process.env.MINIMAX_API_KEY
-  if (!apiKey) {
-    throw new Error('MINIMAX_API_KEY not set')
-  }
-
-  await broadcastEvent({
-    type: 'llm:call',
-    payload: { buildId, model: 'MiniMax', promptLength: prompt.length },
-  })
-
-  try {
-    const response = await fetch('https://api.minimax.chat/v1/text/chatcompletion', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'MiniMax-Text-01',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 4096,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      const apiError = new Error(`MiniMax API error ${response.status}: ${errorText}`)
-      console.error(`[${buildId.slice(0, 8)}] LLM call failed:`, apiError)
-      throw apiError
-    }
-
-    const data = await response.json() as {
-      choices?: Array<{ messages?: Array<{ content?: string }> }>
-      usage?: { total_tokens?: number }
-    }
-
-    const content = data.choices?.[0]?.messages?.[0]?.content ?? ''
-    const tokens = data.usage?.total_tokens ?? 0
-
-    await broadcastEvent({
-      type: 'llm:response',
-      payload: { buildId, tokens, contentLength: content.length },
-    })
-
-    return { content, tokens }
-  } catch (err) {
-    console.error(`[${buildId.slice(0, 8)}] LLM error:`, err)
-    throw err
-  }
-}
-
-// ============================================================================
-// Activity Implementations
-// ============================================================================
-
-async function generateSpec(
-  input: GenerateSpecInput
-): Promise<GenerateSpecOutput> {
-  const buildId = input.buildId
-  log(buildId, `Generating spec for: ${input.name}`)
-
-  await broadcastEvent({
-    type: 'agent:spawn',
-    payload: {
-      buildId,
-      agent: 'spec-generator',
-      task: `Generate SPEC.md for ${input.name}`,
-    },
-  })
-
-  try {
-    let spec: string
-    let tokens = 0
-
-    const apiKey = process.env.MINIMAX_API_KEY
-
-    if (apiKey) {
-      const prompt = `You are a SaaS architect. Generate a comprehensive SPEC.md for a new SaaS application.
-
-App Name: ${input.name}
-Description: ${input.description}
-Features: ${input.features.join(', ')}
-
-Create a detailed SPEC.md that includes:
-1. Concept & Vision
-2. Design Language (colors, typography, spacing)
-3. Layout & Structure
-4. Features & Interactions (detailed for each feature)
-5. Component Inventory
-6. Technical Approach (stack, architecture, API design)
-
-Be specific, creative, and thorough. Output ONLY the SPEC.md content, nothing else.`
-
-      const result = await generateWithLLM(prompt, buildId)
-      spec = result.content
-      tokens = result.tokens
-    } else {
-      // Template-based fallback
-      spec = generateSpecTemplate(input.name, input.description, input.features)
-    }
-
-    await broadcastEvent({
-      type: 'agent:complete',
-      payload: { buildId, agent: 'spec-generator', success: true },
-    })
-
-    return { spec, tokens }
-  } catch (err) {
-    await broadcastEvent({
-      type: 'build:error',
-      payload: { buildId, phase: 'generateSpec', error: String(err) },
-    })
-    throw err
-  }
-}
-
-function generateSpecTemplate(
-  name: string,
-  description: string,
-  features: string[]
-): string {
-  const kebabName = name.toLowerCase().replace(/\s+/g, '-')
-  const capitalizedName = name
-    .split(/[\s-]+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ')
-
-  return `# ${capitalizedName}
-
-## 1. Concept & Vision
-
-${description || `A modern SaaS application called ${capitalizedName}.`} Built with speed, clarity, and usability as core principles. The experience feels fast, focused, and trustworthy — no clutter, no confusion.
-
-## 2. Design Language
-
-### Colors
-- **Primary:** #4F46E5 (Indigo 600)
-- **Secondary:** #0EA5E9 (Sky 500)
-- **Accent:** #10B981 (Emerald 500)
-- **Background:** #FAFAFA
-- **Surface:** #FFFFFF
-- **Text Primary:** #111827
-- **Text Secondary:** #6B7280
-- **Error:** #EF4444
-- **Warning:** #F59E0B
-- **Success:** #22C55E
-
-### Typography
-- **Headings:** Inter (700, 600)
-- **Body:** Inter (400, 500)
-- **Mono:** JetBrains Mono (for code/technical content)
-
-### Spacing
-- Base unit: 4px
-- Scale: 4, 8, 12, 16, 24, 32, 48, 64px
-
-## 3. Layout & Structure
-
-### Pages
-- **Dashboard** — Main hub, key metrics, recent activity
-- **Settings** — User and workspace configuration
-
-### Navigation
-- Left sidebar (collapsible) with main sections
-- Top bar with search, notifications, user menu
-
-## 4. Features & Interactions
-
-${features.map((f) => `- **${f}**: Detailed description of behavior, states, and edge cases`).join('\n')}
-
-## 5. Component Inventory
-
-| Component | States | Notes |
-|-----------|--------|-------|
-| Button | default, hover, active, disabled, loading | Primary/secondary/ghost variants |
-| Input | default, focus, error, disabled | With label and helper text |
-| Card | default, hover | Elevated surface |
-| Badge | info, success, warning, error | For status indicators |
-| Modal | open, closing | Backdrop + centered content |
-| Toast | info, success, warning, error | Auto-dismiss after 5s |
-
-## 6. Technical Approach
-
-### Stack
-- **Frontend:** React 18 + TypeScript + Vite
-- **Styling:** Tailwind CSS
-- **State:** React hooks (useState, useReducer)
-- **Routing:** React Router v6
-- **Forms:** React Hook Form + Zod
-
-### Architecture
-- Feature-based folder structure
-- Shared components in \`/components/ui\`
-- Feature modules in \`/features/{name}\`
-- API calls via typed fetch wrappers
-
-### File Structure
-\`\`\`
-${kebabName}/
-├── SPEC.md
-├── index.html
-├── package.json
-├── vite.config.ts
-├── tailwind.config.js
-├── tsconfig.json
-├── src/
-│   ├── main.tsx
-│   ├── App.tsx
-│   ├── index.css
-│   ├── components/ui/
-│   │   ├── Button.tsx
-│   │   ├── Input.tsx
-│   │   └── Card.tsx
-│   └── pages/
-│       ├── Dashboard.tsx
-│       └── Settings.tsx
-\`\`\`
-`
-}
-
-async function scaffoldProject(
-  input: ScaffoldProjectInput
-): Promise<ScaffoldProjectOutput> {
-  const buildId = input.buildId
-  log(buildId, `Scaffolding project: ${input.projectName}`)
-
-  await broadcastEvent({
-    type: 'agent:spawn',
-    payload: {
-      buildId,
-      agent: 'scaffolder',
-      task: `Create project structure for ${input.projectName}`,
-    },
-  })
-
-  const generatedDir = path.join(
-    process.cwd(),
-    '..',
-    '..',
-    'generated',
-    input.projectName
-  )
-
-  try {
-    await fs.mkdir(generatedDir, { recursive: true })
-    log(buildId, `Created directory: ${generatedDir}`)
-
-    // Write SPEC.md
-    const specPath = path.join(generatedDir, 'SPEC.md')
-    await fs.writeFile(specPath, input.spec, 'utf-8')
-    log(buildId, 'Written SPEC.md')
-
-    // package.json
-    const packageJson = {
-      name: input.projectName,
-      version: '0.1.0',
-      private: true,
-      type: 'module',
-      scripts: {
-        dev: 'vite',
-        build: 'tsc && vite build',
-        preview: 'vite preview',
-      },
-      dependencies: {
-        react: '^18.3.1',
-        'react-dom': '^18.3.1',
-        'react-router-dom': '^6.28.0',
-      },
-      devDependencies: {
-        '@types/react': '^18.3.12',
-        '@types/react-dom': '^18.3.1',
-        '@vitejs/plugin-react': '^4.3.4',
-        autoprefixer: '^10.4.20',
-        postcss: '^8.4.49',
-        tailwindcss: '^3.4.17',
-        typescript: '^5.7.2',
-        vite: '^6.0.6',
-      },
-    }
-
-    await fs.writeFile(
-      path.join(generatedDir, 'package.json'),
-      JSON.stringify(packageJson, null, 2),
-      'utf-8'
-    )
-
-    // tsconfig.json
-    const tsconfig = {
-      compilerOptions: {
-        target: 'ES2020',
-        useDefineForClassFields: true,
-        lib: ['ES2020', 'DOM', 'DOM.Iterable'],
-        module: 'ESNext',
-        skipLibCheck: true,
-        moduleResolution: 'bundler',
-        allowImportingTsExtensions: true,
-        resolveJsonModule: true,
-        isolatedModules: true,
-        noEmit: true,
-        jsx: 'react-jsx',
-        strict: true,
-        noUnusedLocals: true,
-        noUnusedParameters: true,
-        noFallthroughCasesInSwitch: true,
-      },
-      include: ['src'],
-      references: [{ path: './tsconfig.node.json' }],
-    }
-
-    await fs.writeFile(
-      path.join(generatedDir, 'tsconfig.json'),
-      JSON.stringify(tsconfig, null, 2),
-      'utf-8'
-    )
-
-    // tsconfig.node.json
-    await fs.writeFile(
-      path.join(generatedDir, 'tsconfig.node.json'),
-      JSON.stringify(
-        {
-          compilerOptions: {
-            composite: true,
-            skipLibCheck: true,
-            module: 'ESNext',
-            moduleResolution: 'bundler',
-            allowSyntheticDefaultImports: true,
-          },
-          include: ['vite.config.ts'],
-        },
-        null,
-        2
-      ),
-      'utf-8'
-    )
-
-    // vite.config.ts
-    await fs.writeFile(
-      path.join(generatedDir, 'vite.config.ts'),
-      `import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-})
-`,
-      'utf-8'
-    )
-
-    // tailwind.config.js
-    await fs.writeFile(
-      path.join(generatedDir, 'tailwind.config.js'),
-      `/** @type {import('tailwindcss').Config} */
-export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
-  theme: {
-    extend: {
-      colors: {
-        primary: '#4F46E5',
-        secondary: '#0EA5E9',
-        accent: '#10B981',
-      },
-    },
-  },
-  plugins: [],
-}
-`,
-      'utf-8'
-    )
-
-    // postcss.config.js
-    await fs.writeFile(
-      path.join(generatedDir, 'postcss.config.js'),
-      `export default {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}
-`,
-      'utf-8'
-    )
-
-    // index.html
-    await fs.writeFile(
-      path.join(generatedDir, 'index.html'),
-      `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${input.projectName}</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
-`,
-      'utf-8'
-    )
-
-    // src/ directory structure
-    await fs.mkdir(path.join(generatedDir, 'src', 'components', 'ui'), { recursive: true })
-    await fs.mkdir(path.join(generatedDir, 'src', 'pages'), { recursive: true })
-
-    // src/main.tsx
-    await fs.writeFile(
-      path.join(generatedDir, 'src', 'main.tsx'),
-      `import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import './index.css'
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
-`,
-      'utf-8'
-    )
-
-    // src/index.css
-    await fs.writeFile(
-      path.join(generatedDir, 'src', 'index.css'),
-      `@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-body {
-  @apply bg-gray-50 text-gray-900 antialiased;
-}
-`,
-      'utf-8'
-    )
-
-    log(buildId, 'Scaffold complete')
-
-    await broadcastEvent({
-      type: 'agent:complete',
-      payload: { buildId, agent: 'scaffolder', success: true },
-    })
-
-    return {
-      projectPath: generatedDir,
-      stack: ['React', 'TypeScript', 'Vite', 'Tailwind CSS'],
-    }
-  } catch (err) {
-    await broadcastEvent({
-      type: 'build:error',
-      payload: { buildId, phase: 'scaffoldProject', error: String(err) },
-    })
-    throw err
-  }
-}
-
-async function writeCode(
-  input: WriteCodeInput
-): Promise<WriteCodeOutput> {
-  const buildId = input.buildId
-  log(buildId, `Writing code for project at: ${input.projectPath}`)
-
-  await broadcastEvent({
-    type: 'agent:spawn',
-    payload: {
-      buildId,
-      agent: 'coder',
-      task: `Generate application code for build ${buildId}`,
-    },
-  })
-
-  await broadcastEvent({
-    type: 'phase:start',
-    payload: { buildId, phase: 'writeCode' },
-  })
-
-  const files: string[] = []
-
-  try {
-    const apiKey = process.env.MINIMAX_API_KEY
-
-    if (apiKey) {
-      // DYNAMIC CODE GENERATION - Parse SPEC and generate relevant code based on actual requirements
-      const prompt = `You are a senior full-stack developer. Your task is to generate PRODUCTION-READY code based on the provided SPEC.md.
-
-CRITICAL: Analyze the SPEC.md carefully and generate code that MATCHES the exact requirements, design language, and features described. Do NOT generate generic template code.
-
-===SPEC.md===
-${input.spec}
-===END SPEC===
-
-Requirements:
-1. Generate ONLY files that are needed based on the SPEC
-2. For EACH file, output in this EXACT format:
-===FILE:relative/path/file.tsx===
-// code here
-===
-
-3. Analyze the SPEC to determine:
-   - What pages/routes are needed (Dashboard, Blog, Settings, etc.)
-   - What UI components are needed (based on Component Inventory)
-   - What features and interactions need to be implemented
-   - What the API/backend structure should look like
-
-4. Generate COMPLETE, WORKING code - not pseudocode, not stubs
-
-5. Key requirements from SPEC:
-   - Use the exact colors, fonts, spacing from Design Language
-   - Implement all states (default, hover, active, disabled) for components
-   - Add all interactions and animations specified
-   - Follow the Layout & Structure defined
-
-Output all files needed for this specific SaaS application. Format each file with ===FILE:path=== delimiters.`
-
-      try {
-        const result = await generateWithLLM(prompt, buildId)
-        const content = result.content
-
-        // Parse file blocks from LLM response
-        const fileBlocks = content.match(/===FILE:(.*?)===\n([\s\S]*?)(?====FILE:|$)/g) || []
-
-        for (const block of fileBlocks) {
-          const match = block.match(/===FILE:(.*?)===\n([\s\S]*)/)
-          if (match) {
-            const filePath = path.join(input.projectPath, match[1].trim())
-            const fileContent = match[2].trim()
-
-            const dir = path.dirname(filePath)
-            await fs.mkdir(dir, { recursive: true })
-            await fs.writeFile(filePath, fileContent, 'utf-8')
-            files.push(match[1].trim())
-            log(buildId, `Written: ${match[1].trim()}`)
-          }
-        }
-      } catch (llmErr) {
-        console.warn(`[${buildId.slice(0, 8)}] LLM code generation failed, using dynamic scaffold:`, llmErr)
-        // Fall back to dynamic scaffold based on SPEC
-        await writeMinimalCode(input.projectPath, input.spec, files)
+      usedCodingAgent = true
+      if (codingResult.success) {
+        responseContent = `## Implementation Complete\n\n${planResponse.content}\n\n### Coding Agent Output\n${codingResult.output}\n\n### Files Created\n${codingResult.filesCreated.map(f => `- ${f}`).join('\n') || 'None'}\n\n### Duration\n${Math.round(codingResult.duration / 1000)}s`
+      } else {
+        responseContent = `## Implementation (Fallback Mode)\n\n${planResponse.content}\n\n*Note: ${codingResult.error ?? 'Coding agent encountered an issue, using plan output instead.'}*`
       }
     } else {
-      await writeMinimalCode(input.projectPath, input.spec, files)
+      const response = await callLLM(roleConfig.systemPrompt, [{ role: 'user', content: `${context}\n\n${prompt}` }])
+      responseContent = response.content
     }
-
-    await broadcastEvent({
-      type: 'agent:complete',
-      payload: { buildId, agent: 'coder', success: true },
-    })
-
-    await broadcastEvent({
-      type: 'phase:complete',
-      payload: { buildId, phase: 'writeCode', files: files.length },
-    })
-
-    return { files }
-  } catch (err) {
-    await broadcastEvent({
-      type: 'build:error',
-      payload: { buildId, phase: 'writeCode', error: String(err) },
-    })
-    throw err
+  } else {
+    const response = await callLLM(roleConfig.systemPrompt, [{ role: 'user', content: `${context}\n\n${prompt}` }])
+    responseContent = response.content
   }
-}
 
-/**
- * Dynamic Code Generation based on SPEC.md
- * Parses the SPEC and generates code that matches the requirements
- */
-async function writeMinimalCode(projectPath: string, spec: string, files: string[]): Promise<void> {
-  // Parse SPEC to determine what pages and components are needed
-  const specLower = spec.toLowerCase()
-  
-  // Extract likely page names from SPEC
-  const pageNames: string[] = []
-  const pagePatterns = [
-    /###?\s*(\w+(?:\s+\w+)?)\s*(?:page|view|screen)/gi,
-    /##?\s*(\w+)\s*(?:dashboard|settings|profile|home|blog|post|article|comment|user|admin)/gi,
-  ]
-  
-  for (const pattern of pagePatterns) {
-    let match
-    while ((match = pattern.exec(spec)) !== null) {
-      const name = match[1].trim()
-      if (!pageNames.includes(name) && name.length > 2) {
-        pageNames.push(name)
-      }
-    }
-  }
-  
-  // Default pages if none found
-  const pages = pageNames.length > 0 ? pageNames : ['Dashboard', 'Settings']
-  
-  // Generate App.tsx with routing based on pages
-  const appContent = `import { BrowserRouter, Routes, Route } from 'react-router-dom'
+  db.update(agents).set({ progress: 75 }).where(eq(agents.id, agentRecord.id)).run()
+  _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: 75, status: 'working' } })
 
-${pages.map(p => `import { ${p} } from './pages/${p}'`).join('\n')}
-
-export default function App() {
-  return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-zinc-950 text-zinc-100">
-        <nav className="border-b border-zinc-800 p-4">
-          <div className="flex gap-4">
-            ${pages.map((p, i) => `<a key="${p}" href="/" className={i === 0 ? 'text-indigo-400' : 'text-zinc-400'}>/${p.toLowerCase()}</a>`).join('\n            ')}
-          </div>
-        </nav>
-        <Routes>
-          ${pages.map((p, i) => `<Route key="${p}" path="${i === 0 ? '/' : '/' + p.toLowerCase()}" element={<${p} />} />`).join('\n          ')}
-        </Routes>
-      </div>
-    </BrowserRouter>
-  )
-}
-`
-  
-  // Generate each page dynamically based on spec content
-  const pageFiles: Array<[string, string, string]> = [
-    [path.join(projectPath, 'src', 'App.tsx'), appContent, 'src/App.tsx'],
-  ]
-  
-  for (const pageName of pages) {
-    const pageContent = `export default function ${pageName}() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">${pageName}</h1>
-      <p className="text-zinc-400">
-        This page was generated based on the SPEC.md requirements.
-      </p>
-    </div>
-  )
-}
-`
-    pageFiles.push([
-      path.join(projectPath, 'src', 'pages', `${pageName}.tsx`),
-      pageContent,
-      `src/pages/${pageName}.tsx`
-    ])
-  }
-  
-  // Generate UI components
-  const uiComponents = ['Button', 'Input', 'Card']
-  
-  for (const compName of uiComponents) {
-    const content = `export function ${compName}({ children }: { children?: React.ReactNode }) {
-  return (
-    <div className="${compName.toLowerCase() === 'button' ? 'inline-block' : 'bg-zinc-800 border border-zinc-700 rounded-lg p-4'}">
-      {children}
-    </div>
-  )
-}
-`
-    pageFiles.push([
-      path.join(projectPath, 'src', 'components', 'ui', `${compName}.tsx`),
-      content,
-      `src/components/ui/${compName}.tsx`
-    ])
-  }
-  
-  for (const [filePath, content, relativePath] of pageFiles) {
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.writeFile(filePath, content, 'utf-8')
-    files.push(relativePath)
-    log('dynamic-gen', `Written: ${relativePath}`)
-  }
-}
-
-async function buildUI(input: BuildUIInput): Promise<BuildUIOutput> {
-  const buildId = input.buildId
-  log(buildId, `Building UI at: ${input.projectPath}`)
-
-  await broadcastEvent({
-    type: 'agent:spawn',
-    payload: { buildId, agent: 'builder', task: 'Build production assets' },
+  // Save message
+  const messageId = uuid()
+  const messageType = getMessageType(phase, role)
+  db.insert(messages).values({
+    id: messageId,
+    conversationId,
+    projectId,
+    agentId: agentRecord.id,
+    agentRole: role,
+    content: responseContent,
+    messageType: messageType as any,
+    createdAt: new Date(),
+  }).run()
+  _broadcast({
+    type: 'message:created',
+    payload: {
+      projectId,
+      conversationId,
+      message: { id: messageId, agentId: agentRecord.id, agentRole: role, content: responseContent, messageType, createdAt: new Date().toISOString() },
+    },
   })
 
-  await broadcastEvent({
-    type: 'phase:start',
-    payload: { buildId, phase: 'buildUI' },
-  })
-
-  try {
-    // Run npm install
-    log(buildId, 'Running npm install...')
-    try {
-      await execAsync('npm install', { cwd: input.projectPath, timeout: 120_000 })
-    } catch (npmErr) {
-      console.warn(`[${buildId.slice(0, 8)}] npm install had issues:`, npmErr)
-      // Continue anyway
-    }
-
-    // Run npm run build
-    log(buildId, 'Running npm run build...')
-    let buildWarning: string | null = null
-    let buildError: unknown = null
-    try {
-      await execAsync('npm run build', { cwd: input.projectPath, timeout: 180_000 })
-    } catch (err) {
-      // If dist/ was produced despite the error it's a type/lint warning, not a fatal failure
-      const distExists = await fs
-        .access(path.join(input.projectPath, 'dist'))
-        .then(() => true)
-        .catch(() => false)
-      if (distExists) {
-        buildWarning = err instanceof Error ? err.message : String(err)
-      } else {
-        buildError = err
-      }
-    }
-    // Re-throw outside the catch so it propagates to the outer handler
-    if (buildError) throw buildError
-    if (buildWarning) {
-      console.warn(`[${buildId.slice(0, 8)}] Build completed with warnings:`, buildWarning)
-    }
-
-    const buildPath = path.join(input.projectPath, 'dist')
-    const stats = await countBuildArtifacts(buildPath)
-
-    log(buildId, `Build complete: ${stats.components} components, ${stats.pages} pages`)
-
-    await broadcastEvent({
-      type: 'agent:complete',
-      payload: { buildId, agent: 'builder', success: true },
+  // Save artifact
+  const artifactType = getArtifactType(phase, role)
+  if (artifactType) {
+    const artifactId = uuid()
+    db.insert(artifacts).values({
+      id: artifactId,
+      projectId,
+      agentId: agentRecord.id,
+      title: `${roleConfig.name} - ${phase} Output`,
+      type: artifactType as any,
+      content: responseContent,
+      phase,
+      createdAt: new Date(),
+    }).run()
+    _broadcast({
+      type: 'artifact:created',
+      payload: { projectId, artifactId, title: `${roleConfig.name} - ${phase} Output`, type: artifactType, agentId: agentRecord.id, agentRole: role, phase },
     })
-
-    await broadcastEvent({
-      type: 'phase:complete',
-      payload: { buildId, phase: 'buildUI', components: stats.components, pages: stats.pages },
-    })
-
-    return {
-      components: stats.components,
-      pages: stats.pages_list,
-      buildPath,
-    }
-  } catch (err) {
-    await broadcastEvent({
-      type: 'build:error',
-      payload: { buildId, phase: 'buildUI', error: String(err) },
-    })
-    throw err
   }
+
+  await createTasksFromWork(projectId, agentRecord, phase)
+
+  db.update(agents).set({ status: 'done', progress: 100, currentTask: null }).where(eq(agents.id, agentRecord.id)).run()
+  _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'done', progress: 100 } })
+
+  const toolInfo = usedCodingAgent ? ' (using coding agent)' : ''
+  logActivity(projectId, agentRecord.id, role, `${roleConfig.name} completed work${toolInfo}`, `Finished ${phase} phase tasks`, 'success', phase)
+
+  // Small delay for visual pacing
+  await new Promise(resolve => setTimeout(resolve, 300))
 }
 
-async function countBuildArtifacts(buildPath: string): Promise<{ components: number; pages: number; pages_list: string[] }> {
-  try {
-    const assets = await fs.readdir(path.join(buildPath, 'assets')).catch(() => [] as string[])
-    const jsFiles = assets.filter((f) => f.endsWith('.js'))
-    return {
-      components: jsFiles.length,
-      pages: 2,
-      pages_list: ['Dashboard', 'Settings'],
-    }
-  } catch {
-    return { components: 0, pages: 0, pages_list: [] }
-  }
+export async function runCollaborationRound(input: {
+  projectId: string
+  phase: string
+  conversationId: string
+}): Promise<void> {
+  const { projectId, phase, conversationId } = input
+
+  const phaseMessages = db.select().from(messages).where(eq(messages.conversationId, conversationId)).all()
+  if (phaseMessages.length === 0) return
+
+  const pmAgent = db.select().from(agents).where(eq(agents.projectId, projectId)).all().find(a => a.role === 'pm')
+  if (!pmAgent) return
+
+  const contributions = phaseMessages.map(msg => {
+    const roleConfig = AGENT_ROLES[msg.agentRole as AgentRole]
+    return `**${roleConfig?.name ?? msg.agentRole}**: ${msg.content.substring(0, 500)}`
+  }).join('\n\n')
+
+  const reviewPrompt = `Review the team's work for the ${phase} phase. Here are the contributions:\n\n${contributions}\n\nProvide a brief review summary: what looks good, any concerns, and whether the team can proceed to the next phase. Be constructive and specific.`
+
+  db.update(agents).set({ status: 'reviewing', currentTask: `Reviewing ${phase} phase work` }).where(eq(agents.id, pmAgent.id)).run()
+  _broadcast({ type: 'agent:status', payload: { projectId, agentId: pmAgent.id, role: 'pm', status: 'reviewing', task: `Reviewing ${phase} phase work` } })
+
+  const response = await callLLM(AGENT_ROLES.pm.systemPrompt, [{ role: 'user', content: reviewPrompt }])
+
+  const messageId = uuid()
+  db.insert(messages).values({
+    id: messageId,
+    conversationId,
+    projectId,
+    agentId: pmAgent.id,
+    agentRole: 'pm',
+    content: response.content,
+    messageType: 'review',
+    createdAt: new Date(),
+  }).run()
+  _broadcast({
+    type: 'message:created',
+    payload: {
+      projectId,
+      conversationId,
+      message: { id: messageId, agentId: pmAgent.id, agentRole: 'pm', content: response.content, messageType: 'review', createdAt: new Date().toISOString() },
+    },
+  })
+
+  db.update(agents).set({ status: 'idle', currentTask: null }).where(eq(agents.id, pmAgent.id)).run()
+  _broadcast({ type: 'agent:status', payload: { projectId, agentId: pmAgent.id, role: 'pm', status: 'idle' } })
+  logActivity(projectId, pmAgent.id, 'pm', 'PM reviewed phase', `Completed review of ${phase} phase`, 'info', phase)
 }
 
-async function runTests(input: RunTestsInput): Promise<RunTestsOutput> {
-  const buildId = input.buildId
-  log(buildId, `Running smoke tests for: ${input.projectPath}`)
-
-  await broadcastEvent({
-    type: 'agent:spawn',
-    payload: { buildId, agent: 'tester', task: 'Smoke test build artifacts' },
-  })
-
-  await broadcastEvent({
-    type: 'phase:start',
-    payload: { buildId, phase: 'runTests' },
-  })
-
-  const checks: string[] = []
-  let passed = true
-
-  try {
-    // Check dist directory exists
-    const distPath = path.join(input.projectPath, 'dist')
-    try {
-      await fs.access(distPath)
-      checks.push('✅ dist/ directory exists')
-    } catch {
-      checks.push('❌ dist/ directory missing')
-      passed = false
-    }
-
-    // Check assets directory
-    try {
-      const assetsPath = path.join(distPath, 'assets')
-      await fs.access(assetsPath)
-      const files = await fs.readdir(assetsPath)
-      checks.push(`✅ dist/assets/ has ${files.length} files`)
-    } catch {
-      checks.push('❌ dist/assets/ missing')
-      passed = false
-    }
-
-    // Check index.html
-    try {
-      await fs.access(path.join(distPath, 'index.html'))
-      checks.push('✅ dist/index.html exists')
-    } catch {
-      checks.push('❌ dist/index.html missing')
-      passed = false
-    }
-
-    // Check for JS bundles
-    try {
-      const assetsPath = path.join(distPath, 'assets')
-      const files = await fs.readdir(assetsPath)
-      const jsFiles = files.filter((f) => f.endsWith('.js'))
-      if (jsFiles.length > 0) {
-        checks.push(`✅ Found ${jsFiles.length} JS bundle(s)`)
-      } else {
-        checks.push('❌ No JS bundles found')
-        passed = false
-      }
-    } catch {
-      checks.push('❌ Could not read assets directory')
-      passed = false
-    }
-
-    // Check for CSS bundles
-    try {
-      const assetsPath = path.join(distPath, 'assets')
-      const files = await fs.readdir(assetsPath)
-      const cssFiles = files.filter((f) => f.endsWith('.css'))
-      if (cssFiles.length > 0) {
-        checks.push(`✅ Found ${cssFiles.length} CSS bundle(s)`)
-      }
-    } catch {
-      // CSS check is soft - don't fail
-    }
-
-    log(buildId, `Tests ${passed ? 'PASSED' : 'FAILED'}: ${checks.join(', ')}`)
-
-    await broadcastEvent({
-      type: 'agent:complete',
-      payload: { buildId, agent: 'tester', success: passed },
-    })
-
-    await broadcastEvent({
-      type: 'phase:complete',
-      payload: { buildId, phase: 'runTests', passed, checks },
-    })
-
-    return { passed, checks }
-  } catch (err) {
-    await broadcastEvent({
-      type: 'build:error',
-      payload: { buildId, phase: 'runTests', error: String(err) },
-    })
-    throw err
-  }
+export async function completePhase(input: {
+  projectId: string
+  phase: string
+  conversationId: string
+}): Promise<void> {
+  const { projectId, phase, conversationId } = input
+  db.update(conversations).set({ status: 'resolved' }).where(eq(conversations.id, conversationId)).run()
+  _broadcast({ type: 'phase:completed', payload: { projectId, phase } })
+  logActivity(projectId, null, null, `Phase completed: ${phase}`, `${phase} phase finished successfully`, 'success', phase)
 }
 
-async function deploy(input: DeployInput): Promise<DeployOutput> {
-  const buildId = input.buildId
-  log(buildId, `Deploying: ${input.projectName}`)
-
-  await broadcastEvent({
-    type: 'agent:spawn',
-    payload: { buildId, agent: 'deployer', task: `Deploy ${input.projectName} to production` },
-  })
-
-  await broadcastEvent({
-    type: 'phase:start',
-    payload: { buildId, phase: 'deploy' },
-  })
-
-  // Simulate deployment delay
-  await new Promise((r) => setTimeout(r, 2000))
-
-  const url = `https://${input.projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.fly.dev`
-
-  await broadcastEvent({
-    type: 'agent:complete',
-    payload: { buildId, agent: 'deployer', success: true },
-  })
-
-  await broadcastEvent({
-    type: 'phase:complete',
-    payload: { buildId, phase: 'deploy', url },
-  })
-
-  log(buildId, `Deployed to: ${url}`)
-
-  return { url, region: 'ams' }
+export async function completeProject(input: { projectId: string }): Promise<void> {
+  const { projectId } = input
+  db.update(projects)
+    .set({ status: 'completed', currentPhase: 'completed', completedAt: new Date(), updatedAt: new Date() })
+    .where(eq(projects.id, projectId))
+    .run()
+  _broadcast({ type: 'project:completed', payload: { projectId } })
+  logActivity(projectId, null, null, 'Project completed', 'All phases finished successfully', 'milestone', 'completed')
 }
 
-// ============================================================================
-// Worker Entry Point
-// ============================================================================
+export async function failProject(input: { projectId: string; error: string }): Promise<void> {
+  const { projectId, error } = input
+  db.update(projects)
+    .set({ status: 'failed', updatedAt: new Date() })
+    .where(eq(projects.id, projectId))
+    .run()
+  _broadcast({ type: 'project:failed', payload: { projectId, error } })
+  logActivity(projectId, null, null, 'Project failed', error, 'error', null)
+}
 
-async function main(): Promise<void> {
-  console.log('🚀 Starting SaaS Factory Temporal Worker...')
-  console.log(`   Namespace: default`)
-  console.log(`   Address: localhost:7233`)
-  console.log(`   Backend events: ${BACKEND_URL}/api/events`)
+// ── Worker startup ────────────────────────────────────────────────────────────
 
+export async function startWorker(): Promise<void> {
   const worker = await Worker.create({
     workflowsPath: require.resolve('@saas-factory/temporal-workflows'),
     activities: {
-      generateSpec,
-      scaffoldProject,
-      writeCode,
-      buildUI,
-      runTests,
-      deploy,
+      setupPhase,
+      runAgentWork,
+      runCollaborationRound,
+      completePhase,
+      completeProject,
+      failProject,
     },
     namespace: 'default',
     taskQueue: 'factory-builds',
+    maxConcurrentActivityTaskExecutions: 10,
   })
 
-  console.log('✅ Worker connected. Polling for tasks...')
-  await worker.run()
+  console.log('[Worker] Temporal worker started on task queue: factory-builds')
+  // Run in background — crashes are fatal since Temporal handles retries at the activity level
+  worker.run().catch(err => {
+    console.error('[Worker] Temporal worker crashed:', err)
+    process.exit(1)
+  })
 }
-
-main().catch((err) => {
-  console.error('❌ Worker fatal error:', err)
-  process.exit(1)
-})
-
