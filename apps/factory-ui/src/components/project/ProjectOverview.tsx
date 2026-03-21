@@ -1,9 +1,21 @@
 import type { ProjectDetail, ProjectPhase, AgentRole } from '../../types';
 import { PHASE_META, PHASE_ORDER, AGENT_ROLE_META } from '../../types';
-import { CheckCircle2, Circle, Loader2, Clock, Users, FileText, KanbanSquare } from 'lucide-react';
+import { CheckCircle2, Circle, Loader2, Clock, Users, FileText, KanbanSquare, BarChart3, Timer } from 'lucide-react';
 
 interface Props {
   project: ProjectDetail;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return '<1s';
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSecs = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainingSecs}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMins = minutes % 60;
+  return `${hours}h ${remainingMins}m`;
 }
 
 export function ProjectOverview({ project }: Props) {
@@ -15,10 +27,23 @@ export function ProjectOverview({ project }: Props) {
   const activeAgents = project.agents.filter(a => a.status === 'working' || a.status === 'thinking');
   const doneAgents = project.agents.filter(a => a.status === 'done');
 
+  // Calculate total duration from metrics
+  const totalDurationMs = project.metrics?.reduce((sum, m) => {
+    if (m.completedAt) {
+      return sum + (new Date(m.completedAt).getTime() - new Date(m.startedAt).getTime());
+    }
+    if (m.status === 'in_progress') {
+      return sum + (Date.now() - new Date(m.startedAt).getTime());
+    }
+    return sum;
+  }, 0) ?? 0;
+
+  const estimatedHours = project.tasks.reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0);
+
   return (
     <div className="p-6 space-y-6">
       {/* Stats row */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <div className="flex items-center gap-2 text-zinc-400 mb-2">
             <Users className="w-4 h-4" />
@@ -45,6 +70,18 @@ export function ProjectOverview({ project }: Props) {
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <div className="flex items-center gap-2 text-zinc-400 mb-2">
+            <Timer className="w-4 h-4" />
+            <span className="text-xs">Duration</span>
+          </div>
+          <div className="text-xl font-bold text-white">
+            {totalDurationMs > 0 ? formatDuration(totalDurationMs) : '-'}
+          </div>
+          <div className="text-xs text-zinc-500">
+            {estimatedHours > 0 ? `${estimatedHours}h estimated` : 'Not started'}
+          </div>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-zinc-400 mb-2">
             <Clock className="w-4 h-4" />
             <span className="text-xs">Created</span>
           </div>
@@ -66,6 +103,16 @@ export function ProjectOverview({ project }: Props) {
             const isCompleted = idx < currentPhaseIdx;
             const isCurrent = phase === project.currentPhase;
             const isLocked = idx > currentPhaseIdx;
+
+            // Find metrics for this phase
+            const phaseMetric = project.metrics?.find(m => m.phase === phase);
+            const phaseDurationMs = phaseMetric
+              ? (phaseMetric.completedAt
+                ? new Date(phaseMetric.completedAt).getTime() - new Date(phaseMetric.startedAt).getTime()
+                : phaseMetric.status === 'in_progress'
+                  ? Date.now() - new Date(phaseMetric.startedAt).getTime()
+                  : 0)
+              : 0;
 
             return (
               <div key={phase} className="flex items-center flex-1">
@@ -93,6 +140,11 @@ export function ProjectOverview({ project }: Props) {
                     </span>
                   </div>
                   <p className="text-[10px] text-zinc-500 ml-6">{meta.description}</p>
+                  {phaseDurationMs > 0 && (
+                    <p className="text-[10px] ml-6 mt-1 font-medium" style={{ color: meta.color }}>
+                      {formatDuration(phaseDurationMs)}
+                    </p>
+                  )}
                 </div>
                 {idx < PHASE_ORDER.length - 2 && (
                   <div className={`w-4 h-px mx-1 ${isCompleted ? 'bg-emerald-500' : 'bg-zinc-700'}`} />

@@ -1,3 +1,5 @@
+import type { ProjectAnalytics, Deployment, DeploymentOption, StackInfo } from '../types';
+
 const API_BASE = 'http://localhost:3010/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -53,12 +55,63 @@ export const api = {
   // Artifacts
   getProjectArtifacts: (projectId: string) => request<any[]>(`/projects/${projectId}/artifacts`),
 
+  searchArtifacts: (projectId: string, params: { q?: string; type?: string; phase?: string }) => {
+    const query = new URLSearchParams();
+    if (params.q) query.set('q', params.q);
+    if (params.type) query.set('type', params.type);
+    if (params.phase) query.set('phase', params.phase);
+    return request<any[]>(`/projects/${projectId}/artifacts/search?${query.toString()}`);
+  },
+
   // Logs
   getProjectLogs: (projectId: string) => request<any[]>(`/projects/${projectId}/logs`),
 
-  // Pause project
+  // Pause / Resume
   pauseProject: (id: string) =>
     request<{ status: string }>(`/projects/${id}/pause`, { method: 'POST' }),
+
+  resumeProject: (id: string) =>
+    request<{ status: string }>(`/projects/${id}/resume`, { method: 'POST' }),
+
+  // Metrics & Analytics
+  getProjectMetrics: (projectId: string) => request<any[]>(`/projects/${projectId}/metrics`),
+
+  getProjectAnalytics: (projectId: string) => request<ProjectAnalytics>(`/projects/${projectId}/analytics`),
+
+  // Generated Files
+  getProjectFiles: (projectId: string) =>
+    request<{ directory: string; exists: boolean; files: Array<{ path: string; type: string; size: number }>; totalFiles: number; totalSize: number }>(`/projects/${projectId}/files`),
+
+  getFileContent: (projectId: string, filePath: string) =>
+    request<{ path: string; content: string; size: number; modifiedAt: string }>(`/projects/${projectId}/files/content?path=${encodeURIComponent(filePath)}`),
+
+  // Export
+  exportProject: (projectId: string) => request<any>(`/projects/${projectId}/export`),
+
+  // Deployments
+  getDeploymentOptions: (projectId: string) =>
+    request<{ stack: StackInfo; options: DeploymentOption[]; projectDir: string }>(`/projects/${projectId}/deploy/options`),
+
+  deployProject: (projectId: string, strategy: string) =>
+    request<{ deploymentId?: string; url?: string; success?: boolean; error?: string; status?: string }>(`/projects/${projectId}/deploy`, {
+      method: 'POST',
+      body: JSON.stringify({ strategy }),
+    }),
+
+  getDeployments: (projectId: string) =>
+    request<Deployment[]>(`/projects/${projectId}/deployments`),
+
+  stopDeployment: (projectId: string, deploymentId: string) =>
+    request<{ status: string }>(`/projects/${projectId}/deployments/${deploymentId}/stop`, { method: 'POST' }),
+
+  checkDeploymentHealth: (projectId: string, deploymentId: string) =>
+    request<{ healthy: boolean; details: string }>(`/projects/${projectId}/deployments/${deploymentId}/health`),
+
+  cleanupDeployments: (projectId: string) =>
+    request<{ removed: number }>(`/projects/${projectId}/deployments/cleanup`, { method: 'POST' }),
+
+  getDeploymentLogs: (projectId: string, deploymentId: string) =>
+    request<{ buildLog: string; errorLog: string }>(`/projects/${projectId}/deployments/${deploymentId}/logs`),
 
   // Coding agent
   getCodingAgentStatus: () =>

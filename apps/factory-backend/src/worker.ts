@@ -21,11 +21,14 @@ import {
   tasks,
   artifacts,
   activityLog,
+  phaseMetrics,
+  generatedFiles,
 } from './db/schema.js'
 import { eq } from 'drizzle-orm'
 import { AGENT_ROLES } from './agents/roles.js'
 import { callLLM } from './agents/llm.js'
 import { runCodingAgent, isCodingAgentAvailable } from './agents/coding-agent.js'
+import { detectStack, getDeploymentOptions, redeployProject, getProjectDir } from './agents/deployment-manager.js'
 import type { AgentRole } from './agents/roles.js'
 
 const require = createRequire(import.meta.url)
@@ -252,7 +255,7 @@ async function createTasksFromWork(projectId: string, agentRecord: { id: string;
 
 // ── Activities ────────────────────────────────────────────────────────────────
 
-export async function setupPhase(input: { projectId: string; phase: string }): Promise<{ conversationId: string }> {
+export async function setupPhase(input: { projectId: string; phase: string }): Promise<{ conversationId: string; metricsId: string }> {
   const { projectId, phase } = input
 
   db.update(projects)
@@ -262,6 +265,16 @@ export async function setupPhase(input: { projectId: string; phase: string }): P
 
   _broadcast({ type: 'phase:started', payload: { projectId, phase } })
   logActivity(projectId, null, null, `Phase started: ${phase}`, `Entering ${phase} phase`, 'milestone', phase)
+
+  // Create phase metrics record
+  const metricsId = uuid()
+  db.insert(phaseMetrics).values({
+    id: metricsId,
+    projectId,
+    phase,
+    startedAt: new Date(),
+    status: 'in_progress',
+  }).run()
 
   const conversationId = uuid()
   const title = `${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase Discussion`
@@ -275,7 +288,7 @@ export async function setupPhase(input: { projectId: string; phase: string }): P
   }).run()
 
   _broadcast({ type: 'conversation:created', payload: { projectId, conversationId, title, phase } })
-  return { conversationId }
+  return { conversationId, metricsId }
 }
 
 export async function runAgentWork(input: {
@@ -283,8 +296,10 @@ export async function runAgentWork(input: {
   phase: string
   role: string
   conversationId: string
+  metricsId?: string
 }): Promise<void> {
-  const { projectId, phase, role, conversationId } = input
+  const { projectId, phase, role, conversationId, metricsId } = input
+  const agentStartTime = Date.now()
 
   const roleConfig = AGENT_ROLES[role as AgentRole]
   if (!roleConfig) throw new Error(`Unknown agent role: ${role}`)
@@ -438,8 +453,31 @@ export async function runAgentWork(input: {
   db.update(agents).set({ status: 'done', progress: 100, currentTask: null }).where(eq(agents.id, agentRecord.id)).run()
   _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'done', progress: 100 } })
 
+  // Track agent duration in phase metrics
+  const agentDurationMs = Date.now() - agentStartTime
+  if (metricsId) {
+    const metric = db.select().from(phaseMetrics).where(eq(phaseMetrics.id, metricsId)).get()
+    if (metric) {
+      const durations = JSON.parse(metric.agentDurations || '{}')
+      durations[role] = {
+        startedAt: new Date(agentStartTime).toISOString(),
+        completedAt: new Date().toISOString(),
+        durationMs: agentDurationMs,
+      }
+      db.update(phaseMetrics)
+        .set({
+          agentDurations: JSON.stringify(durations),
+          taskCount: metric.taskCount + (TASK_TEMPLATES[phase]?.[role]?.length ?? 0),
+          artifactCount: metric.artifactCount + (artifactType ? 1 : 0),
+          messageCount: metric.messageCount + 1,
+        })
+        .where(eq(phaseMetrics.id, metricsId))
+        .run()
+    }
+  }
+
   const toolInfo = usedCodingAgent ? ' (using coding agent)' : ''
-  logActivity(projectId, agentRecord.id, role, `${roleConfig.name} completed work${toolInfo}`, `Finished ${phase} phase tasks`, 'success', phase)
+  logActivity(projectId, agentRecord.id, role, `${roleConfig.name} completed work${toolInfo}`, `Finished ${phase} phase tasks in ${Math.round(agentDurationMs / 1000)}s`, 'success', phase)
 
   // Small delay for visual pacing
   await new Promise(resolve => setTimeout(resolve, 300))
@@ -449,6 +487,7 @@ export async function runCollaborationRound(input: {
   projectId: string
   phase: string
   conversationId: string
+  metricsId?: string
 }): Promise<void> {
   const { projectId, phase, conversationId } = input
 
@@ -499,11 +538,25 @@ export async function completePhase(input: {
   projectId: string
   phase: string
   conversationId: string
+  metricsId?: string
 }): Promise<void> {
-  const { projectId, phase, conversationId } = input
+  const { projectId, phase, conversationId, metricsId } = input
   db.update(conversations).set({ status: 'resolved' }).where(eq(conversations.id, conversationId)).run()
+
+  // Finalize phase metrics
+  if (metricsId) {
+    const metric = db.select().from(phaseMetrics).where(eq(phaseMetrics.id, metricsId)).get()
+    const durationMs = metric ? Date.now() - new Date(metric.startedAt).getTime() : 0
+    db.update(phaseMetrics)
+      .set({ completedAt: new Date(), status: 'completed' })
+      .where(eq(phaseMetrics.id, metricsId))
+      .run()
+    logActivity(projectId, null, null, `Phase completed: ${phase}`, `${phase} phase finished in ${Math.round(durationMs / 1000)}s`, 'success', phase)
+  } else {
+    logActivity(projectId, null, null, `Phase completed: ${phase}`, `${phase} phase finished successfully`, 'success', phase)
+  }
+
   _broadcast({ type: 'phase:completed', payload: { projectId, phase } })
-  logActivity(projectId, null, null, `Phase completed: ${phase}`, `${phase} phase finished successfully`, 'success', phase)
 }
 
 export async function completeProject(input: { projectId: string }): Promise<void> {
@@ -526,6 +579,62 @@ export async function failProject(input: { projectId: string; error: string }): 
   logActivity(projectId, null, null, 'Project failed', error, 'error', null)
 }
 
+/**
+ * Prepares deployment options after the deployment phase completes.
+ * Detects the stack, generates Docker files, and broadcasts available options to the user.
+ */
+export async function prepareDeployment(input: { projectId: string }): Promise<{
+  options: Array<{ strategy: string; label: string; description: string; recommended: boolean; requirements: string[]; estimatedTime: string }>
+  stackDetected: Record<string, unknown>
+}> {
+  const { projectId } = input
+
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+  if (!project) throw new Error(`Project ${projectId} not found`)
+
+  const projectDir = getProjectDir(project.name)
+  const stack = detectStack(projectDir)
+  const options = getDeploymentOptions(projectDir)
+
+  logActivity(projectId, null, 'devops', 'Deployment options ready',
+    `Detected stack: ${stack.framework || 'unknown'} (${stack.language || 'unknown'}). ${options.length} deployment strategies available: ${options.map(o => o.label).join(', ')}`,
+    'milestone', 'deployment')
+
+  // Broadcast deployment options to the frontend
+  _broadcast({
+    type: 'deployment:options',
+    payload: { projectId, options },
+  })
+
+  return { options, stackDetected: stack as Record<string, unknown> }
+}
+
+/**
+ * Executes the chosen deployment strategy.
+ * Called when the user selects a deployment option from the UI.
+ */
+export async function executeDeployment(input: {
+  projectId: string
+  strategy: 'docker' | 'vercel' | 'static'
+}): Promise<{ success: boolean; url: string; deploymentId: string; error?: string }> {
+  const { projectId, strategy } = input
+
+  logActivity(projectId, null, 'devops', `Starting ${strategy} deployment`,
+    `Deploying project using ${strategy} strategy`, 'info', 'deployment')
+
+  const result = await redeployProject(projectId, strategy, _broadcast)
+
+  if (result.success) {
+    logActivity(projectId, null, 'devops', 'Deployment successful',
+      `Project deployed successfully. URL: ${result.url}`, 'success', 'deployment')
+  } else {
+    logActivity(projectId, null, 'devops', 'Deployment failed',
+      `Deployment failed: ${result.error}`, 'error', 'deployment')
+  }
+
+  return result
+}
+
 // ── Worker startup ────────────────────────────────────────────────────────────
 
 export async function startWorker(): Promise<void> {
@@ -538,6 +647,8 @@ export async function startWorker(): Promise<void> {
       completePhase,
       completeProject,
       failProject,
+      prepareDeployment,
+      executeDeployment,
     },
     namespace: 'default',
     taskQueue: 'factory-builds',

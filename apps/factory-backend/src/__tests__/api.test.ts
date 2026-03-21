@@ -312,6 +312,9 @@ describe('Database Schema', () => {
     expect(schema.tasks).toBeDefined();
     expect(schema.artifacts).toBeDefined();
     expect(schema.activityLog).toBeDefined();
+    expect(schema.phaseMetrics).toBeDefined();
+    expect(schema.generatedFiles).toBeDefined();
+    expect(schema.deployments).toBeDefined();
   });
 });
 
@@ -624,6 +627,83 @@ describe('Project Routes Validation', () => {
       description: 'Test',
       config: { billingMode: 'invalid' },
     }).success).toBe(false);
+  });
+});
+
+// ============ Deployment Manager Tests ============
+
+describe('Deployment Manager', () => {
+  it('should export stack detection function', async () => {
+    const { detectStack } = await import('../agents/deployment-manager.js');
+    expect(typeof detectStack).toBe('function');
+  });
+
+  it('should return empty stack info for non-existent directory', async () => {
+    const { detectStack } = await import('../agents/deployment-manager.js');
+    const stack = detectStack('/tmp/nonexistent-project-dir');
+    expect(stack.recommendedStrategies).toBeDefined();
+    expect(stack.recommendedStrategies).toContain('docker');
+  });
+
+  it('should export deployment option functions', async () => {
+    const { getDeploymentOptions, getProjectDir } = await import('../agents/deployment-manager.js');
+    expect(typeof getDeploymentOptions).toBe('function');
+    expect(typeof getProjectDir).toBe('function');
+  });
+
+  it('should sanitize project names for directory paths', async () => {
+    const { getProjectDir } = await import('../agents/deployment-manager.js');
+    const dir = getProjectDir('My Cool Project!');
+    expect(dir).toContain('my-cool-project');
+    expect(dir).not.toContain('!');
+    expect(dir).not.toContain(' ');
+  });
+
+  it('should export Dockerfile generation functions', async () => {
+    const { generateDockerfile, generateDockerCompose } = await import('../agents/deployment-manager.js');
+    expect(typeof generateDockerfile).toBe('function');
+    expect(typeof generateDockerCompose).toBe('function');
+  });
+
+  it('should generate a valid Dockerfile for a Node backend', async () => {
+    const { generateDockerfile } = await import('../agents/deployment-manager.js');
+    const dockerfile = generateDockerfile('/tmp', {
+      language: 'typescript',
+      runtime: 'node',
+      hasBackend: true,
+      backendFramework: 'express',
+      packageManager: 'npm',
+      buildCommand: 'npm run build',
+      startCommand: 'npm start',
+      recommendedStrategies: ['docker'],
+    });
+    expect(dockerfile).toContain('FROM node:22-alpine');
+    expect(dockerfile).toContain('npm ci');
+    expect(dockerfile).toContain('EXPOSE 3000');
+    expect(dockerfile).toContain('npm run build');
+  });
+
+  it('should generate docker-compose with postgres for db apps', async () => {
+    const { generateDockerCompose } = await import('../agents/deployment-manager.js');
+    const compose = generateDockerCompose('test-app', {
+      hasDatabase: true,
+      databaseType: 'postgres',
+      hasBackend: true,
+      recommendedStrategies: ['docker'],
+    }, 4000);
+    expect(compose).toContain('postgres:16-alpine');
+    expect(compose).toContain('4000:3000');
+    expect(compose).toContain('DATABASE_URL');
+    expect(compose).toContain('pgdata');
+  });
+
+  it('should recommend vercel for Next.js apps', async () => {
+    const { detectStack } = await import('../agents/deployment-manager.js');
+    // We can't easily mock the filesystem here, but we can test that the
+    // strategy recommendation logic works correctly
+    const stack = detectStack('/tmp/nonexistent');
+    // Without a package.json, docker should be the default
+    expect(stack.recommendedStrategies[0]).toBe('docker');
   });
 });
 

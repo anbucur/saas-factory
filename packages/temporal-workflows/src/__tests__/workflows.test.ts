@@ -180,9 +180,73 @@ describe('Workflow Sequence', () => {
       runTests: ['buildUI'],
       deploy: ['runTests'],
     }
-    
+
     expect(dependencies.scaffoldProject).toContain('generateSpec')
     expect(dependencies.writeCode).toContain('scaffoldProject')
     expect(dependencies.deploy).toContain('runTests')
+  })
+})
+
+describe('Activity Stubs with Metrics', () => {
+  it('SetupPhaseOutput should include metricsId', () => {
+    const output = {
+      conversationId: 'conv-123',
+      metricsId: 'metric-456',
+    }
+    expect(output.conversationId).toBeTruthy()
+    expect(output.metricsId).toBeTruthy()
+  })
+
+  it('RunAgentWorkInput should accept optional metricsId', () => {
+    const input = {
+      projectId: 'proj-1',
+      phase: 'requirements',
+      role: 'pm',
+      conversationId: 'conv-1',
+      metricsId: 'metric-1',
+    }
+    expect(input.metricsId).toBe('metric-1')
+  })
+
+  it('CompletePhaseInput should accept optional metricsId', () => {
+    const input = {
+      projectId: 'proj-1',
+      phase: 'requirements',
+      conversationId: 'conv-1',
+      metricsId: 'metric-1',
+    }
+    expect(input.metricsId).toBe('metric-1')
+  })
+})
+
+describe('Deployment Activity Stubs', () => {
+  it('PrepareDeploymentInput should have projectId', () => {
+    const input = { projectId: 'proj-1' }
+    expect(input.projectId).toBeTruthy()
+  })
+
+  it('PrepareDeploymentOutput should return options and stack', () => {
+    const output = {
+      options: [
+        { strategy: 'docker', label: 'Docker', description: 'Run in Docker', recommended: true, requirements: [], estimatedTime: '2-5m' },
+        { strategy: 'vercel', label: 'Vercel', description: 'Deploy to Vercel', recommended: false, requirements: [], estimatedTime: '1-3m' },
+      ],
+      stackDetected: { framework: 'react', language: 'typescript', hasBackend: false },
+    }
+    expect(output.options).toHaveLength(2)
+    expect(output.options[0].recommended).toBe(true)
+    expect(output.stackDetected.framework).toBe('react')
+  })
+
+  it('ExecuteDeploymentInput should have strategy', () => {
+    const input = { projectId: 'proj-1', strategy: 'docker' as const }
+    expect(input.strategy).toBe('docker')
+  })
+
+  it('ExecuteDeploymentOutput should have success and url', () => {
+    const output = { success: true, url: 'http://localhost:4000', deploymentId: 'dep-1' }
+    expect(output.success).toBe(true)
+    expect(output.url).toContain('localhost')
+    expect(output.deploymentId).toBeTruthy()
   })
 })

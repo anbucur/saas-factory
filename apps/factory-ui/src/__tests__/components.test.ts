@@ -1,6 +1,6 @@
 /**
  * Frontend Tests for SaaS Factory v2
- * Includes tests for coding agent UI integration
+ * Includes tests for coding agent UI integration, metrics, analytics, and file browser
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -16,6 +16,14 @@ import {
   type ArtifactType,
   type LogType,
   type MessageType,
+  type PhaseMetric,
+  type ProjectAnalytics,
+  type GeneratedFile,
+  type Deployment,
+  type DeploymentStrategy,
+  type DeploymentStatus,
+  type DeploymentOption,
+  type StackInfo,
 } from '../types';
 
 // ============ Type Validation Tests ============
@@ -162,6 +170,200 @@ describe('Log Types', () => {
   });
 });
 
+// ============ Phase Metrics Types Tests ============
+
+describe('Phase Metrics Types', () => {
+  it('should have correct PhaseMetric shape', () => {
+    const metric: PhaseMetric = {
+      id: 'metric-1',
+      projectId: 'proj-1',
+      phase: 'requirements',
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      agentDurations: {
+        pm: { startedAt: '', completedAt: '', durationMs: 1000 },
+        ba: { startedAt: '', completedAt: '', durationMs: 2000 },
+      },
+      taskCount: 5,
+      artifactCount: 2,
+      messageCount: 3,
+      status: 'completed',
+    };
+
+    expect(metric.id).toBeTruthy();
+    expect(metric.phase).toBe('requirements');
+    expect(metric.status).toBe('completed');
+    expect(metric.agentDurations.pm.durationMs).toBe(1000);
+    expect(metric.taskCount).toBe(5);
+  });
+
+  it('should support in_progress status', () => {
+    const metric: PhaseMetric = {
+      id: 'metric-2',
+      projectId: 'proj-1',
+      phase: 'development',
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      agentDurations: {},
+      taskCount: 0,
+      artifactCount: 0,
+      messageCount: 0,
+      status: 'in_progress',
+    };
+
+    expect(metric.completedAt).toBeNull();
+    expect(metric.status).toBe('in_progress');
+  });
+});
+
+// ============ Generated File Types Tests ============
+
+describe('Generated File Types', () => {
+  it('should have correct GeneratedFile shape', () => {
+    const file: GeneratedFile = {
+      id: 'file-1',
+      projectId: 'proj-1',
+      filePath: 'src/index.ts',
+      fileType: 'ts',
+      sizeBytes: 1024,
+      agentRole: 'frontend_dev',
+      phase: 'development',
+      createdAt: new Date().toISOString(),
+    };
+
+    expect(file.filePath).toBe('src/index.ts');
+    expect(file.fileType).toBe('ts');
+    expect(file.sizeBytes).toBe(1024);
+  });
+});
+
+// ============ Analytics Types Tests ============
+
+describe('Analytics Types', () => {
+  it('should have correct ProjectAnalytics shape', () => {
+    const analytics: ProjectAnalytics = {
+      totalDurationMs: 60000,
+      phaseDurations: [{
+        phase: 'requirements',
+        durationMs: 15000,
+        status: 'completed',
+        agentDurations: {},
+        taskCount: 5,
+        artifactCount: 2,
+        messageCount: 3,
+      }],
+      agentPerformance: [{
+        agentId: 'agent-1',
+        role: 'pm',
+        name: 'Project Manager',
+        status: 'done',
+        tasksCompleted: 3,
+        tasksTotal: 3,
+        artifactsCreated: 1,
+        messagesCount: 5,
+        totalDurationMs: 10000,
+        estimatedHours: 4,
+      }],
+      taskBreakdown: { backlog: 0, todo: 0, in_progress: 0, review: 0, done: 10 },
+      artifactBreakdown: { spec: 1, architecture: 1, code: 2 },
+      totals: {
+        tasks: 10,
+        artifacts: 4,
+        messages: 15,
+        conversations: 5,
+        estimatedHours: 40,
+      },
+    };
+
+    expect(analytics.totalDurationMs).toBe(60000);
+    expect(analytics.phaseDurations).toHaveLength(1);
+    expect(analytics.agentPerformance).toHaveLength(1);
+    expect(analytics.totals.tasks).toBe(10);
+  });
+});
+
+// ============ Deployment Types Tests ============
+
+describe('Deployment Types', () => {
+  it('should have 3 deployment strategies', () => {
+    const strategies: DeploymentStrategy[] = ['docker', 'vercel', 'static'];
+    expect(strategies).toHaveLength(3);
+  });
+
+  it('should have 7 deployment statuses', () => {
+    const statuses: DeploymentStatus[] = ['pending', 'building', 'deploying', 'running', 'failed', 'stopped', 'obsolete'];
+    expect(statuses).toHaveLength(7);
+  });
+
+  it('should have correct Deployment shape', () => {
+    const deployment: Deployment = {
+      id: 'dep-1',
+      projectId: 'proj-1',
+      strategy: 'docker',
+      status: 'running',
+      url: 'http://localhost:4000',
+      containerId: 'abc123',
+      vercelDeploymentId: null,
+      port: 4000,
+      buildLog: 'Build succeeded',
+      errorLog: '',
+      stackDetected: { framework: 'react', language: 'typescript', recommendedStrategies: ['docker'] },
+      dockerfileGenerated: true,
+      retryCount: 0,
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      stoppedAt: null,
+    };
+
+    expect(deployment.strategy).toBe('docker');
+    expect(deployment.status).toBe('running');
+    expect(deployment.url).toBe('http://localhost:4000');
+    expect(deployment.port).toBe(4000);
+    expect(deployment.dockerfileGenerated).toBe(true);
+    expect(deployment.stackDetected.framework).toBe('react');
+  });
+
+  it('should have correct DeploymentOption shape', () => {
+    const option: DeploymentOption = {
+      strategy: 'docker',
+      label: 'Docker Container',
+      description: 'Run in Docker',
+      recommended: true,
+      requirements: [],
+      estimatedTime: '2-5 minutes',
+    };
+
+    expect(option.strategy).toBe('docker');
+    expect(option.recommended).toBe(true);
+    expect(option.requirements).toHaveLength(0);
+  });
+
+  it('should have correct StackInfo shape', () => {
+    const stack: StackInfo = {
+      framework: 'next',
+      language: 'typescript',
+      runtime: 'node',
+      hasBackend: true,
+      hasFrontend: true,
+      hasDatabase: true,
+      databaseType: 'postgres',
+      packageManager: 'npm',
+      isMonorepo: false,
+      buildCommand: 'npm run build',
+      startCommand: 'npm start',
+      frontendFramework: 'next',
+      backendFramework: undefined,
+      recommendedStrategies: ['vercel', 'docker'],
+    };
+
+    expect(stack.framework).toBe('next');
+    expect(stack.hasBackend).toBe(true);
+    expect(stack.recommendedStrategies).toContain('vercel');
+    expect(stack.recommendedStrategies).toContain('docker');
+  });
+});
+
 // ============ Store Tests ============
 
 describe('App Store', () => {
@@ -173,6 +375,7 @@ describe('App Store', () => {
     expect(state.currentProject).toBeNull();
     expect(state.wsConnected).toBe(false);
     expect(state.sidebarCollapsed).toBe(false);
+    expect(state.notifications).toEqual([]);
   });
 
   it('should set projects', async () => {
@@ -203,6 +406,20 @@ describe('App Store', () => {
     expect(useAppStore.getState().sidebarCollapsed).toBe(initial);
   });
 
+  it('should add and dismiss notifications', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.addNotification('Test message', 'info');
+    expect(useAppStore.getState().notifications).toHaveLength(1);
+    expect(useAppStore.getState().notifications[0].message).toBe('Test message');
+    expect(useAppStore.getState().notifications[0].type).toBe('info');
+
+    const notifId = useAppStore.getState().notifications[0].id;
+    store.dismissNotification(notifId);
+    expect(useAppStore.getState().notifications).toHaveLength(0);
+  });
+
   it('should handle project:started event', async () => {
     const { useAppStore } = await import('../store/store');
     const store = useAppStore.getState();
@@ -210,7 +427,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-1', name: 'Test', description: 'Test', status: 'planning',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -228,7 +445,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-pause', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.setProjects([{
@@ -253,7 +470,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-2', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'deployment', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -272,7 +489,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-3', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -294,7 +511,7 @@ describe('App Store', () => {
         id: 'agent-1', projectId: 'proj-4', role: 'pm', name: 'Project Manager',
         status: 'idle', currentTask: null, progress: 0, createdAt: '',
       }],
-      tasks: [], artifacts: [], conversations: [], logs: [],
+      tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
     });
 
     store.handleWSEvent({
@@ -318,7 +535,7 @@ describe('App Store', () => {
         id: 'agent-pm', projectId: 'proj-review', role: 'pm', name: 'Project Manager',
         status: 'idle', currentTask: null, progress: 0, createdAt: '',
       }],
-      tasks: [], artifacts: [], conversations: [], logs: [],
+      tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
     });
 
     store.handleWSEvent({
@@ -338,7 +555,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-convo', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -365,7 +582,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-5', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -384,7 +601,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-art', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -413,7 +630,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-6', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -446,7 +663,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-7', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -469,6 +686,7 @@ describe('API Client', () => {
     expect(typeof api.createProject).toBe('function');
     expect(typeof api.startProject).toBe('function');
     expect(typeof api.pauseProject).toBe('function');
+    expect(typeof api.resumeProject).toBe('function');
     expect(typeof api.deleteProject).toBe('function');
     expect(typeof api.getProjectAgents).toBe('function');
     expect(typeof api.getProjectConversations).toBe('function');
@@ -476,9 +694,24 @@ describe('API Client', () => {
     expect(typeof api.getProjectTasks).toBe('function');
     expect(typeof api.updateTask).toBe('function');
     expect(typeof api.getProjectArtifacts).toBe('function');
+    expect(typeof api.searchArtifacts).toBe('function');
     expect(typeof api.getProjectLogs).toBe('function');
     expect(typeof api.getCodingAgentStatus).toBe('function');
     expect(typeof api.health).toBe('function');
+    expect(typeof api.getProjectMetrics).toBe('function');
+    expect(typeof api.getProjectAnalytics).toBe('function');
+    expect(typeof api.getProjectFiles).toBe('function');
+    expect(typeof api.getFileContent).toBe('function');
+    expect(typeof api.exportProject).toBe('function');
+
+    // Deployment methods
+    expect(typeof api.getDeploymentOptions).toBe('function');
+    expect(typeof api.deployProject).toBe('function');
+    expect(typeof api.getDeployments).toBe('function');
+    expect(typeof api.stopDeployment).toBe('function');
+    expect(typeof api.checkDeploymentHealth).toBe('function');
+    expect(typeof api.cleanupDeployments).toBe('function');
+    expect(typeof api.getDeploymentLogs).toBe('function');
   });
 });
 
@@ -534,7 +767,7 @@ describe('Phase-Agent Mapping Consistency', () => {
 });
 
 describe('Data Structure Contracts', () => {
-  it('ProjectDetail should contain all required arrays', () => {
+  it('ProjectDetail should contain all required arrays including metrics, files, and deployments', () => {
     const projectDetail = {
       id: '1', name: 'Test', description: 'Test', status: 'planning' as const,
       currentPhase: 'requirements' as const, config: {}, createdAt: '', updatedAt: '', completedAt: null,
@@ -543,6 +776,9 @@ describe('Data Structure Contracts', () => {
       artifacts: [],
       conversations: [],
       logs: [],
+      metrics: [],
+      generatedFiles: [],
+      deployments: [],
     };
 
     expect(projectDetail.agents).toBeInstanceOf(Array);
@@ -550,6 +786,9 @@ describe('Data Structure Contracts', () => {
     expect(projectDetail.artifacts).toBeInstanceOf(Array);
     expect(projectDetail.conversations).toBeInstanceOf(Array);
     expect(projectDetail.logs).toBeInstanceOf(Array);
+    expect(projectDetail.metrics).toBeInstanceOf(Array);
+    expect(projectDetail.generatedFiles).toBeInstanceOf(Array);
+    expect(projectDetail.deployments).toBeInstanceOf(Array);
   });
 
   it('Agent should have required fields', () => {
