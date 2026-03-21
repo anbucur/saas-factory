@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,12 +6,16 @@
 
 :root {
   font-family: 'Inter', system-ui, sans-serif;
-  background-color: #0f1117;
+  background-color: #09090b;
   color: #e4e4e7;
 }
 
 body {
   margin: 0;
+  min-height: 100vh;
+}
+
+#root {
   min-height: 100vh;
 }
 
@@ -25,20 +29,74 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #1a1d27;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #27272a;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #3f3f46;
 }
 
-/* Board grid background */
-.board-grid {
-  background-image:
-    linear-gradient(rgba(42, 45, 58, 0.3) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(42, 45, 58, 0.3) 1px, transparent 1px);
-  background-size: 40px 40px;
+/* Animations */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2s ease-in-out infinite;
+}
+
+/* Prose for markdown-like content */
+.prose-sm p {
+  margin-bottom: 0.5rem;
+}
+
+.prose-sm h2, .prose-sm h3 {
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-sm ul, .prose-sm ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-sm li {
+  margin-bottom: 0.25rem;
+}
+
+.prose-sm code {
+  background: rgba(39, 39, 42, 0.5);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+}
+
+.prose-sm pre {
+  background: rgba(39, 39, 42, 0.5);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.prose-sm table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+
+.prose-sm th, .prose-sm td {
+  border: 1px solid #27272a;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.prose-sm th {
+  background: rgba(39, 39, 42, 0.5);
+  font-weight: 600;
 }

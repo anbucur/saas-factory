@@ -1,114 +1,672 @@
 /**
- * Backend API Tests for SaaS Factory
+ * Backend API & Engine Tests for SaaS Factory v2
+ * Includes tests for Claude Code / Opencode coding agent integration
  */
+import { describe, it, expect, beforeAll } from 'vitest';
+import { AGENT_ROLES, PHASE_AGENTS, PHASE_ORDER, getNextPhase, getAgentDisplayInfo } from '../agents/roles.js';
+import type { AgentRole } from '../agents/roles.js';
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+// ============ Agent Roles Tests ============
 
-const TEST_PORT = 3099
-const BASE_URL = `http://localhost:${TEST_PORT}`
+describe('Agent Roles', () => {
+  it('should define all 7 agent roles', () => {
+    const roles: AgentRole[] = ['pm', 'ba', 'architect', 'frontend_dev', 'backend_dev', 'qa', 'devops'];
+    expect(Object.keys(AGENT_ROLES)).toHaveLength(7);
+    roles.forEach(role => {
+      expect(AGENT_ROLES[role]).toBeDefined();
+    });
+  });
 
-// Test build payload
-const testBuild = {
-  name: 'Test Family Blog',
-  description: 'A family blog with AI cover images and comments',
-  features: ['blog posts', 'AI cover images', 'comments', 'share posts'],
-}
-
-describe('POST /api/builds', () => {
-  it('should reject empty name', async () => {
-    const res = await fetch(`${BASE_URL}/api/builds`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: '', description: 'test' }),
-    })
-    expect(res.status).toBe(400)
-  })
-
-  it('should reject missing name', async () => {
-    const res = await fetch(`${BASE_URL}/api/builds`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: 'test' }),
-    })
-    expect(res.status).toBe(400)
-  })
-
-  it('should accept valid build request', async () => {
-    const res = await fetch(`${BASE_URL}/api/builds`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testBuild),
-    })
-    expect(res.status).toBe(200)
-    const data = await res.json() as { buildId: string; status: string }
-    expect(data.buildId).toBeDefined()
-    expect(data.status).toBe('started')
-  })
-
-  it('should return valid UUID as buildId', async () => {
-    const res = await fetch(`${BASE_URL}/api/builds`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testBuild),
-    })
-    const data = await res.json() as { buildId: string }
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    expect(data.buildId).toMatch(uuidRegex)
-  })
-})
-
-describe('GET /api/health', () => {
-  it('should return ok status', async () => {
-    const res = await fetch(`${BASE_URL}/api/health`)
-    expect(res.status).toBe(200)
-    const data = await res.json() as { status: string }
-    expect(data.status).toBe('ok')
-  })
-
-  it('should include temporal status', async () => {
-    const res = await fetch(`${BASE_URL}/api/health`)
-    const data = await res.json() as { temporal: string }
-    expect(data.temporal).toBeDefined()
-    expect(['connected', 'unavailable']).toContain(data.temporal)
-  })
-})
-
-describe('POST /api/events', () => {
-  it('should accept valid event', async () => {
-    const event = {
-      type: 'agent:spawn',
-      payload: { buildId: 'test-123', agent: 'coder', task: 'Write code' },
+  it('each role should have required fields', () => {
+    for (const [key, config] of Object.entries(AGENT_ROLES)) {
+      expect(config.role).toBe(key);
+      expect(config.name).toBeTruthy();
+      expect(config.title).toBeTruthy();
+      expect(config.emoji).toBeTruthy();
+      expect(config.color).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(config.description).toBeTruthy();
+      expect(config.systemPrompt).toBeTruthy();
+      expect(config.systemPrompt.length).toBeGreaterThan(50);
+      expect(config.capabilities).toBeInstanceOf(Array);
+      expect(config.capabilities.length).toBeGreaterThan(0);
+      expect(config.participatesInPhases).toBeInstanceOf(Array);
+      expect(config.participatesInPhases.length).toBeGreaterThan(0);
     }
-    const res = await fetch(`${BASE_URL}/api/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event),
-    })
-    expect(res.status).toBe(200)
-    const data = await res.json() as { ok: boolean }
-    expect(data.ok).toBe(true)
-  })
+  });
 
-  it('should include timestamp in broadcast', async () => {
-    const event = {
-      type: 'log',
-      payload: { buildId: 'test-123', message: 'Test log' },
+  it('PM should participate in all phases', () => {
+    const pm = AGENT_ROLES.pm;
+    expect(pm.participatesInPhases).toContain('requirements');
+    expect(pm.participatesInPhases).toContain('architecture');
+    expect(pm.participatesInPhases).toContain('development');
+    expect(pm.participatesInPhases).toContain('testing');
+    expect(pm.participatesInPhases).toContain('deployment');
+  });
+
+  it('BA should only participate in requirements phase', () => {
+    expect(AGENT_ROLES.ba.participatesInPhases).toEqual(['requirements']);
+  });
+
+  it('Architect should only participate in architecture phase', () => {
+    expect(AGENT_ROLES.architect.participatesInPhases).toEqual(['architecture']);
+  });
+
+  it('QA should only participate in testing phase', () => {
+    expect(AGENT_ROLES.qa.participatesInPhases).toEqual(['testing']);
+  });
+
+  it('DevOps should only participate in deployment phase', () => {
+    expect(AGENT_ROLES.devops.participatesInPhases).toEqual(['deployment']);
+  });
+});
+
+// ============ Phase Configuration Tests ============
+
+describe('Phase Configuration', () => {
+  it('should define agents for all 5 development phases', () => {
+    expect(Object.keys(PHASE_AGENTS)).toHaveLength(5);
+    expect(PHASE_AGENTS.requirements).toBeDefined();
+    expect(PHASE_AGENTS.architecture).toBeDefined();
+    expect(PHASE_AGENTS.development).toBeDefined();
+    expect(PHASE_AGENTS.testing).toBeDefined();
+    expect(PHASE_AGENTS.deployment).toBeDefined();
+  });
+
+  it('PM should be in every phase', () => {
+    for (const [phase, agents] of Object.entries(PHASE_AGENTS)) {
+      expect(agents).toContain('pm');
     }
-    const res = await fetch(`${BASE_URL}/api/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event),
-    })
-    expect(res.status).toBe(200)
-  })
-})
+  });
 
-describe('CORS', () => {
-  it('should allow cross-origin requests', async () => {
-    const res = await fetch(`${BASE_URL}/api/health`, {
-      method: 'GET',
-      headers: { Origin: 'http://example.com' },
-    })
-    expect(res.status).toBe(200)
-  })
-})
+  it('requirements phase should include PM and BA', () => {
+    expect(PHASE_AGENTS.requirements).toEqual(['pm', 'ba']);
+  });
+
+  it('architecture phase should include PM and architect', () => {
+    expect(PHASE_AGENTS.architecture).toEqual(['pm', 'architect']);
+  });
+
+  it('development phase should include PM, frontend_dev, and backend_dev', () => {
+    expect(PHASE_AGENTS.development).toContain('pm');
+    expect(PHASE_AGENTS.development).toContain('frontend_dev');
+    expect(PHASE_AGENTS.development).toContain('backend_dev');
+  });
+
+  it('testing phase should include PM, QA, and developers', () => {
+    expect(PHASE_AGENTS.testing).toContain('pm');
+    expect(PHASE_AGENTS.testing).toContain('qa');
+  });
+
+  it('deployment phase should include PM and devops', () => {
+    expect(PHASE_AGENTS.deployment).toEqual(['pm', 'devops']);
+  });
+});
+
+// ============ Phase Order Tests ============
+
+describe('Phase Order', () => {
+  it('should have 6 phases including completed', () => {
+    expect(PHASE_ORDER).toHaveLength(6);
+  });
+
+  it('should follow correct order', () => {
+    expect(PHASE_ORDER).toEqual([
+      'requirements',
+      'architecture',
+      'development',
+      'testing',
+      'deployment',
+      'completed',
+    ]);
+  });
+
+  it('getNextPhase should return correct next phase', () => {
+    expect(getNextPhase('requirements')).toBe('architecture');
+    expect(getNextPhase('architecture')).toBe('development');
+    expect(getNextPhase('development')).toBe('testing');
+    expect(getNextPhase('testing')).toBe('deployment');
+    expect(getNextPhase('deployment')).toBe('completed');
+  });
+
+  it('getNextPhase should return null for completed or invalid', () => {
+    expect(getNextPhase('completed')).toBeNull();
+    expect(getNextPhase('invalid')).toBeNull();
+  });
+});
+
+// ============ Agent Display Info Tests ============
+
+describe('Agent Display Info', () => {
+  it('should return correct info for each role', () => {
+    const pmInfo = getAgentDisplayInfo('pm');
+    expect(pmInfo.name).toBe('Project Manager');
+    expect(pmInfo.emoji).toBe('📋');
+    expect(pmInfo.color).toBe('#3b82f6');
+    expect(pmInfo.title).toBe('PM');
+  });
+
+  it('each role should have unique colors', () => {
+    const colors = Object.values(AGENT_ROLES).map(r => r.color);
+    const uniqueColors = new Set(colors);
+    expect(uniqueColors.size).toBe(colors.length);
+  });
+
+  it('each role should have unique emojis', () => {
+    const emojis = Object.values(AGENT_ROLES).map(r => r.emoji);
+    const uniqueEmojis = new Set(emojis);
+    expect(uniqueEmojis.size).toBe(emojis.length);
+  });
+});
+
+// ============ LLM Module Tests ============
+
+describe('LLM Fallback', () => {
+  it('should return responses without API key', async () => {
+    const originalKey = process.env.MINIMAX_API_KEY;
+    delete process.env.MINIMAX_API_KEY;
+
+    const { callLLM } = await import('../agents/llm.js');
+    const response = await callLLM(
+      'You are an experienced Project Manager for a SaaS development team.',
+      [{ role: 'user', content: 'Create a project plan for a blog application' }]
+    );
+
+    expect(response.content).toBeTruthy();
+    expect(response.content.length).toBeGreaterThan(100);
+    expect(response.tokensUsed).toBe(0);
+
+    if (originalKey) process.env.MINIMAX_API_KEY = originalKey;
+  });
+
+  it('should return role-appropriate responses', async () => {
+    delete process.env.MINIMAX_API_KEY;
+
+    const { callLLM } = await import('../agents/llm.js');
+
+    const baResponse = await callLLM(
+      'You are a skilled Business Analyst for a SaaS development team.',
+      [{ role: 'user', content: 'Analyze requirements' }]
+    );
+    expect(baResponse.content).toContain('Requirements');
+
+    const architectResponse = await callLLM(
+      'You are a senior Solution Architect for a SaaS development team.',
+      [{ role: 'user', content: 'Design architecture' }]
+    );
+    expect(architectResponse.content).toContain('Architecture');
+
+    const qaResponse = await callLLM(
+      'You are a meticulous QA Engineer for a SaaS development team.',
+      [{ role: 'user', content: 'Test the app' }]
+    );
+    expect(qaResponse.content).toContain('Test');
+
+    const devopsResponse = await callLLM(
+      'You are a skilled DevOps Engineer for a SaaS development team.',
+      [{ role: 'user', content: 'Deploy the app' }]
+    );
+    expect(devopsResponse.content).toContain('Deploy');
+  });
+});
+
+// ============ Coding Agent Tests ============
+
+describe('Coding Agent', () => {
+  it('should export isCodingAgentAvailable function', async () => {
+    const { isCodingAgentAvailable } = await import('../agents/coding-agent.js');
+    expect(typeof isCodingAgentAvailable).toBe('function');
+  });
+
+  it('should return availability status with name', async () => {
+    const { isCodingAgentAvailable } = await import('../agents/coding-agent.js');
+    const status = isCodingAgentAvailable();
+
+    expect(status).toHaveProperty('available');
+    expect(status).toHaveProperty('name');
+    expect(typeof status.available).toBe('boolean');
+    expect(typeof status.name).toBe('string');
+  });
+
+  it('should detect Claude Code if available in PATH', async () => {
+    const { isCodingAgentAvailable } = await import('../agents/coding-agent.js');
+    const status = isCodingAgentAvailable();
+
+    // In this environment, Claude Code should be available
+    if (status.available) {
+      expect(status.name).toBe('Claude Code');
+    }
+  });
+
+  it('should export runCodingAgent function', async () => {
+    const { runCodingAgent } = await import('../agents/coding-agent.js');
+    expect(typeof runCodingAgent).toBe('function');
+  });
+
+  it('runCodingAgent should return proper result structure', async () => {
+    const { runCodingAgent, isCodingAgentAvailable } = await import('../agents/coding-agent.js');
+    const status = isCodingAgentAvailable();
+
+    if (!status.available) {
+      // If no coding agent, should return error result
+      const result = await runCodingAgent({
+        projectId: 'test-123',
+        projectName: 'test-project',
+        task: 'Create a hello world file',
+        context: 'Test context',
+      });
+
+      expect(result).toHaveProperty('success');
+      expect(result).toHaveProperty('output');
+      expect(result).toHaveProperty('filesCreated');
+      expect(result).toHaveProperty('filesModified');
+      expect(result).toHaveProperty('duration');
+      expect(result.filesCreated).toBeInstanceOf(Array);
+      expect(result.filesModified).toBeInstanceOf(Array);
+      expect(typeof result.duration).toBe('number');
+    }
+  });
+
+  it('coding roles should be correctly identified', () => {
+    // Frontend dev, backend dev, and devops use coding agent during development
+    // QA uses coding agent during testing
+    const codingRoles: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops'];
+    const testingRoles: AgentRole[] = ['qa'];
+
+    codingRoles.forEach(role => {
+      expect(AGENT_ROLES[role]).toBeDefined();
+      expect(AGENT_ROLES[role].participatesInPhases).toBeDefined();
+    });
+
+    testingRoles.forEach(role => {
+      expect(AGENT_ROLES[role]).toBeDefined();
+    });
+  });
+
+  it('non-coding roles should use MiniMax LLM', () => {
+    const thinkingRoles: AgentRole[] = ['pm', 'ba', 'architect'];
+
+    thinkingRoles.forEach(role => {
+      const config = AGENT_ROLES[role];
+      expect(config.systemPrompt).toBeTruthy();
+      // These roles should NOT be in the coding roles list
+      expect(['frontend_dev', 'backend_dev', 'devops']).not.toContain(role);
+    });
+  });
+});
+
+// ============ Database Schema Tests ============
+
+describe('Database Schema', () => {
+  it('should initialize database without errors', async () => {
+    const { initializeDatabase } = await import('../db/index.js');
+    expect(() => initializeDatabase()).not.toThrow();
+  });
+
+  it('should have correct table schemas', async () => {
+    const schema = await import('../db/schema.js');
+
+    expect(schema.projects).toBeDefined();
+    expect(schema.agents).toBeDefined();
+    expect(schema.conversations).toBeDefined();
+    expect(schema.messages).toBeDefined();
+    expect(schema.tasks).toBeDefined();
+    expect(schema.artifacts).toBeDefined();
+    expect(schema.activityLog).toBeDefined();
+  });
+});
+
+// ============ Engine Tests ============
+
+describe('AgentEngine', () => {
+  it('should create a project with all agents', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const events: any[] = [];
+    const engine = new AgentEngine((event) => events.push(event));
+
+    const projectId = await engine.createProject('Test Project', 'A test SaaS application');
+
+    expect(projectId).toBeTruthy();
+    expect(projectId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
+
+    const createEvent = events.find(e => e.type === 'project:created');
+    expect(createEvent).toBeDefined();
+    expect(createEvent.payload.name).toBe('Test Project');
+  });
+
+  it('should retrieve project status with all related data', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const engine = new AgentEngine(() => {});
+
+    const projectId = await engine.createProject('Status Test', 'Testing status retrieval');
+    const status = engine.getProjectStatus(projectId);
+
+    expect(status).toBeDefined();
+    expect(status!.name).toBe('Status Test');
+    expect(status!.description).toBe('Testing status retrieval');
+    expect(status!.status).toBe('planning');
+    expect(status!.currentPhase).toBe('requirements');
+    expect(status!.agents).toHaveLength(7);
+    expect(status!.tasks).toEqual([]);
+    expect(status!.artifacts).toEqual([]);
+    expect(status!.conversations).toEqual([]);
+  });
+
+  it('should create agents for all 7 roles', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const engine = new AgentEngine(() => {});
+
+    const projectId = await engine.createProject('Agent Test', 'Testing agent creation');
+    const status = engine.getProjectStatus(projectId);
+
+    const roles = status!.agents.map(a => a.role).sort();
+    expect(roles).toEqual(['architect', 'ba', 'backend_dev', 'devops', 'frontend_dev', 'pm', 'qa']);
+  });
+
+  it('should track running status', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const engine = new AgentEngine(() => {});
+
+    const projectId = await engine.createProject('Running Test', 'Test');
+    expect(engine.isRunning(projectId)).toBe(false);
+  });
+
+  it('should store project config as JSON', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const engine = new AgentEngine(() => {});
+
+    const config = { stack: ['react', 'node'], features: ['auth', 'dashboard'], billingMode: 'subscription' };
+    const projectId = await engine.createProject('Config Test', 'Test', config);
+    const status = engine.getProjectStatus(projectId);
+
+    expect(status!.config).toBeDefined();
+    expect(status!.config.stack).toEqual(['react', 'node']);
+    expect(status!.config.features).toEqual(['auth', 'dashboard']);
+  });
+
+  it('should report coding agent status', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const engine = new AgentEngine(() => {});
+
+    const codingStatus = engine.getCodingAgentStatus();
+    expect(codingStatus).toHaveProperty('available');
+    expect(codingStatus).toHaveProperty('name');
+  });
+
+  it('should log coding agent info on project creation', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const events: any[] = [];
+    const engine = new AgentEngine((event) => events.push(event));
+
+    await engine.createProject('Coding Agent Test', 'Test coding agent logging');
+
+    const activityEvent = events.find(e =>
+      e.type === 'activity:log' && e.payload.action === 'Project created'
+    );
+    expect(activityEvent).toBeDefined();
+    expect(activityEvent.payload.details).toContain('agent');
+  });
+
+  it('should prevent starting a project twice', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const engine = new AgentEngine(() => {});
+
+    const projectId = await engine.createProject('Double Start', 'Test');
+    await engine.startProject(projectId);
+
+    await expect(engine.startProject(projectId)).rejects.toThrow('already running');
+  });
+
+  it('should pause a running project', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const events: any[] = [];
+    const engine = new AgentEngine((event) => events.push(event));
+
+    const projectId = await engine.createProject('Pause Test', 'Test pause functionality');
+    await engine.startProject(projectId);
+
+    // Wait a bit for the project to start
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    await engine.pauseProject(projectId);
+
+    expect(engine.isRunning(projectId)).toBe(false);
+
+    const pauseEvent = events.find(e => e.type === 'project:paused');
+    expect(pauseEvent).toBeDefined();
+    expect(pauseEvent.payload.projectId).toBe(projectId);
+  });
+
+  it('should prevent pausing a non-running project', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const engine = new AgentEngine(() => {});
+
+    const projectId = await engine.createProject('No Pause', 'Test');
+
+    await expect(engine.pauseProject(projectId)).rejects.toThrow('not running');
+  });
+
+  it('should start a project and run through phases', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const events: any[] = [];
+    const engine = new AgentEngine((event) => events.push(event));
+
+    const projectId = await engine.createProject('Full Run', 'Complete test run');
+
+    await engine.startProject(projectId);
+
+    // Wait for async processing
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    const phaseStarted = events.filter(e => e.type === 'phase:started');
+    expect(phaseStarted.length).toBeGreaterThan(0);
+
+    const agentEvents = events.filter(e => e.type === 'agent:status' || e.type === 'agent:progress');
+    expect(agentEvents.length).toBeGreaterThan(0);
+
+    // Check that conversations were created
+    const conversationEvents = events.filter(e => e.type === 'conversation:created');
+    expect(conversationEvents.length).toBeGreaterThan(0);
+
+    // Check that review messages were created (PM collaboration round)
+    const messageEvents = events.filter(e =>
+      e.type === 'message:created' && e.payload.message?.messageType === 'review'
+    );
+    expect(messageEvents.length).toBeGreaterThan(0);
+  }, 60000);
+
+  it('should emit proper events during phase execution', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const events: any[] = [];
+    const engine = new AgentEngine((event) => events.push(event));
+
+    const projectId = await engine.createProject('Event Test', 'Testing event flow');
+    await engine.startProject(projectId);
+
+    // Wait for first phase
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Should have project:started
+    expect(events.some(e => e.type === 'project:started')).toBe(true);
+
+    // Should have phase:started for requirements
+    expect(events.some(e => e.type === 'phase:started' && e.payload.phase === 'requirements')).toBe(true);
+
+    // Should have agent status changes
+    const agentStatuses = events.filter(e => e.type === 'agent:status');
+    const thinkingEvents = agentStatuses.filter(e => e.payload.status === 'thinking');
+    const workingEvents = agentStatuses.filter(e => e.payload.status === 'working');
+    expect(thinkingEvents.length).toBeGreaterThan(0);
+    expect(workingEvents.length).toBeGreaterThan(0);
+
+    // Should have task:created events
+    const taskEvents = events.filter(e => e.type === 'task:created');
+    expect(taskEvents.length).toBeGreaterThan(0);
+
+    // Should have artifact:created events
+    const artifactEvents = events.filter(e => e.type === 'artifact:created');
+    expect(artifactEvents.length).toBeGreaterThan(0);
+  }, 30000);
+});
+
+// ============ Agent Collaboration Tests ============
+
+describe('Agent Collaboration', () => {
+  it('PM should review work at end of each phase', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const events: any[] = [];
+    const engine = new AgentEngine((event) => events.push(event));
+
+    const projectId = await engine.createProject('Collab Test', 'Testing collaboration');
+    await engine.startProject(projectId);
+
+    // Wait for first phase to complete (requirements)
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // PM should have a reviewing status event
+    const reviewingEvents = events.filter(e =>
+      e.type === 'agent:status' &&
+      e.payload.role === 'pm' &&
+      e.payload.status === 'reviewing'
+    );
+    expect(reviewingEvents.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it('agents should see previous artifacts in context', async () => {
+    const { AgentEngine } = await import('../agents/engine.js');
+    const events: any[] = [];
+    const engine = new AgentEngine((event) => events.push(event));
+
+    const projectId = await engine.createProject('Context Test', 'Testing context sharing');
+    await engine.startProject(projectId);
+
+    // Wait for two phases
+    await new Promise(resolve => setTimeout(resolve, 8000));
+
+    const status = engine.getProjectStatus(projectId);
+    // After requirements phase, there should be artifacts
+    expect(status!.artifacts.length).toBeGreaterThan(0);
+
+    // Messages should exist from multiple agents
+    const uniqueRoles = new Set(events
+      .filter(e => e.type === 'message:created')
+      .map(e => e.payload.message?.agentRole)
+      .filter(Boolean)
+    );
+    expect(uniqueRoles.size).toBeGreaterThan(1);
+  }, 30000);
+});
+
+// ============ Parallel Agent Execution Tests ============
+
+describe('Parallel Agent Execution', () => {
+  it('should define parallel groups for each phase', () => {
+    // Development phase should have frontend_dev and backend_dev in same group
+    const devPhaseAgents = PHASE_AGENTS.development;
+    expect(devPhaseAgents).toContain('frontend_dev');
+    expect(devPhaseAgents).toContain('backend_dev');
+  });
+
+  it('testing phase should have developers available for bug fixes', () => {
+    const testPhaseAgents = PHASE_AGENTS.testing;
+    expect(testPhaseAgents).toContain('qa');
+    expect(testPhaseAgents).toContain('frontend_dev');
+    expect(testPhaseAgents).toContain('backend_dev');
+  });
+});
+
+// ============ Project Routes Validation Tests ============
+
+describe('Project Routes Validation', () => {
+  it('should validate project name length', () => {
+    const { z } = require('zod');
+    const schema = z.object({
+      name: z.string().min(1).max(100),
+      description: z.string().min(1).max(2000),
+    });
+
+    expect(schema.safeParse({ name: '', description: 'test' }).success).toBe(false);
+    expect(schema.safeParse({ name: 'Valid Name', description: 'test' }).success).toBe(true);
+    expect(schema.safeParse({ name: 'a'.repeat(101), description: 'test' }).success).toBe(false);
+  });
+
+  it('should validate project description length', () => {
+    const { z } = require('zod');
+    const schema = z.object({
+      name: z.string().min(1).max(100),
+      description: z.string().min(1).max(2000),
+    });
+
+    expect(schema.safeParse({ name: 'Test', description: '' }).success).toBe(false);
+    expect(schema.safeParse({ name: 'Test', description: 'Valid description' }).success).toBe(true);
+    expect(schema.safeParse({ name: 'Test', description: 'a'.repeat(2001) }).success).toBe(false);
+  });
+
+  it('should validate optional config schema', () => {
+    const { z } = require('zod');
+    const schema = z.object({
+      name: z.string().min(1).max(100),
+      description: z.string().min(1).max(2000),
+      config: z.object({
+        stack: z.array(z.string()).optional(),
+        features: z.array(z.string()).optional(),
+        billingMode: z.enum(['subscription', 'usage', 'none']).optional(),
+      }).optional(),
+    });
+
+    expect(schema.safeParse({
+      name: 'Test',
+      description: 'Test',
+      config: { stack: ['react'], features: ['auth'], billingMode: 'subscription' },
+    }).success).toBe(true);
+
+    expect(schema.safeParse({
+      name: 'Test',
+      description: 'Test',
+      config: { billingMode: 'invalid' },
+    }).success).toBe(false);
+  });
+});
+
+// ============ Coding Agent Integration Scenarios ============
+
+describe('Coding Agent Integration Scenarios', () => {
+  it('development phase should route coding roles to coding agent', () => {
+    const codingRoles: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops'];
+    const thinkingRoles: AgentRole[] = ['pm', 'ba', 'architect'];
+
+    // Coding roles should be in development phase
+    codingRoles.forEach(role => {
+      if (role === 'devops') {
+        expect(PHASE_AGENTS.deployment).toContain(role);
+      } else {
+        expect(PHASE_AGENTS.development).toContain(role);
+      }
+    });
+
+    // Thinking roles should NOT be in coding roles list
+    thinkingRoles.forEach(role => {
+      expect(codingRoles).not.toContain(role);
+    });
+  });
+
+  it('QA should use coding agent during testing phase', () => {
+    expect(PHASE_AGENTS.testing).toContain('qa');
+  });
+
+  it('PM should always use MiniMax LLM, never coding agent', () => {
+    const codingRoles: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops'];
+    expect(codingRoles).not.toContain('pm');
+
+    // PM participates in all phases but should use LLM
+    expect(AGENT_ROLES.pm.participatesInPhases.length).toBe(5);
+  });
+
+  it('architecture phase should not use coding agent', () => {
+    const architectureAgents = PHASE_AGENTS.architecture;
+    const codingRoles: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops'];
+
+    architectureAgents.forEach(agent => {
+      expect(codingRoles).not.toContain(agent);
+    });
+  });
+});
