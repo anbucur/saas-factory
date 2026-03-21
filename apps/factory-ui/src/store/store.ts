@@ -20,7 +20,14 @@ interface AppState {
   // UI state
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+
+  // Notification state
+  notifications: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; timestamp: number }>;
+  addNotification: (message: string, type: 'info' | 'success' | 'error') => void;
+  dismissNotification: (id: string) => void;
 }
+
+let notifId = 0;
 
 export const useAppStore = create<AppState>((set, get) => ({
   projects: [],
@@ -34,6 +41,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+
+  notifications: [],
+  addNotification: (message, type) => {
+    const id = `notif-${++notifId}`;
+    set((s) => ({
+      notifications: [...s.notifications.slice(-9), { id, message, type, timestamp: Date.now() }],
+    }));
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      set((s) => ({ notifications: s.notifications.filter(n => n.id !== id) }));
+    }, 5000);
+  },
+  dismissNotification: (id) => set((s) => ({
+    notifications: s.notifications.filter(n => n.id !== id),
+  })),
 
   handleWSEvent: (event: WSEvent) => {
     const state = get();
@@ -59,6 +81,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             p.id === projectId ? { ...p, status: 'in_progress' as const } : p
           ),
         });
+        state.addNotification('Project build started', 'info');
         break;
       }
 
@@ -78,6 +101,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             p.id === projectId ? { ...p, status: 'completed' as const } : p
           ),
         });
+        state.addNotification('Project completed successfully!', 'success');
         break;
       }
 
@@ -96,6 +120,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             p.id === projectId ? { ...p, status: 'paused' as const } : p
           ),
         });
+        state.addNotification('Project paused', 'info');
         break;
       }
 
@@ -109,6 +134,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             },
           });
         }
+        state.addNotification('Project failed: ' + event.payload.error, 'error');
         break;
       }
 

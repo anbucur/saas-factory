@@ -1,3 +1,5 @@
+import type { ProjectAnalytics } from '../types';
+
 const API_BASE = 'http://localhost:3010/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -53,12 +55,38 @@ export const api = {
   // Artifacts
   getProjectArtifacts: (projectId: string) => request<any[]>(`/projects/${projectId}/artifacts`),
 
+  searchArtifacts: (projectId: string, params: { q?: string; type?: string; phase?: string }) => {
+    const query = new URLSearchParams();
+    if (params.q) query.set('q', params.q);
+    if (params.type) query.set('type', params.type);
+    if (params.phase) query.set('phase', params.phase);
+    return request<any[]>(`/projects/${projectId}/artifacts/search?${query.toString()}`);
+  },
+
   // Logs
   getProjectLogs: (projectId: string) => request<any[]>(`/projects/${projectId}/logs`),
 
-  // Pause project
+  // Pause / Resume
   pauseProject: (id: string) =>
     request<{ status: string }>(`/projects/${id}/pause`, { method: 'POST' }),
+
+  resumeProject: (id: string) =>
+    request<{ status: string }>(`/projects/${id}/resume`, { method: 'POST' }),
+
+  // Metrics & Analytics
+  getProjectMetrics: (projectId: string) => request<any[]>(`/projects/${projectId}/metrics`),
+
+  getProjectAnalytics: (projectId: string) => request<ProjectAnalytics>(`/projects/${projectId}/analytics`),
+
+  // Generated Files
+  getProjectFiles: (projectId: string) =>
+    request<{ directory: string; exists: boolean; files: Array<{ path: string; type: string; size: number }>; totalFiles: number; totalSize: number }>(`/projects/${projectId}/files`),
+
+  getFileContent: (projectId: string, filePath: string) =>
+    request<{ path: string; content: string; size: number; modifiedAt: string }>(`/projects/${projectId}/files/content?path=${encodeURIComponent(filePath)}`),
+
+  // Export
+  exportProject: (projectId: string) => request<any>(`/projects/${projectId}/export`),
 
   // Coding agent
   getCodingAgentStatus: () =>

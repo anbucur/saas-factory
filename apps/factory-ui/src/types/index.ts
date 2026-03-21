@@ -63,6 +63,8 @@ export interface ProjectDetail extends Project {
   artifacts: Artifact[];
   conversations: Conversation[];
   logs: ActivityLogEntry[];
+  metrics: PhaseMetric[];
+  generatedFiles: GeneratedFile[];
 }
 
 // ============ Task Types ============
@@ -142,6 +144,76 @@ export interface ActivityLogEntry {
   logType: LogType;
   phase: string | null;
   createdAt: string;
+}
+
+// ============ Phase Metrics ============
+
+export interface AgentDuration {
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+}
+
+export interface PhaseMetric {
+  id: string;
+  projectId: string;
+  phase: string;
+  startedAt: string;
+  completedAt: string | null;
+  agentDurations: Record<string, AgentDuration>;
+  taskCount: number;
+  artifactCount: number;
+  messageCount: number;
+  status: 'in_progress' | 'completed' | 'failed';
+}
+
+// ============ Generated Files ============
+
+export interface GeneratedFile {
+  id: string;
+  projectId: string;
+  filePath: string;
+  fileType: string;
+  sizeBytes: number;
+  agentRole: string | null;
+  phase: string;
+  createdAt: string;
+}
+
+// ============ Analytics ============
+
+export interface ProjectAnalytics {
+  totalDurationMs: number;
+  phaseDurations: Array<{
+    phase: string;
+    durationMs: number;
+    status: string;
+    agentDurations: Record<string, AgentDuration>;
+    taskCount: number;
+    artifactCount: number;
+    messageCount: number;
+  }>;
+  agentPerformance: Array<{
+    agentId: string;
+    role: string;
+    name: string;
+    status: string;
+    tasksCompleted: number;
+    tasksTotal: number;
+    artifactsCreated: number;
+    messagesCount: number;
+    totalDurationMs: number;
+    estimatedHours: number;
+  }>;
+  taskBreakdown: Record<TaskStatus, number>;
+  artifactBreakdown: Record<string, number>;
+  totals: {
+    tasks: number;
+    artifacts: number;
+    messages: number;
+    conversations: number;
+    estimatedHours: number;
+  };
 }
 
 // ============ WebSocket Events ============

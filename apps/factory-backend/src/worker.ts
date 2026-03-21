@@ -21,6 +21,8 @@ import {
   tasks,
   artifacts,
   activityLog,
+  phaseMetrics,
+  generatedFiles,
 } from './db/schema.js'
 import { eq } from 'drizzle-orm'
 import { AGENT_ROLES } from './agents/roles.js'
@@ -252,7 +254,7 @@ async function createTasksFromWork(projectId: string, agentRecord: { id: string;
 
 // ── Activities ────────────────────────────────────────────────────────────────
 
-export async function setupPhase(input: { projectId: string; phase: string }): Promise<{ conversationId: string }> {
+export async function setupPhase(input: { projectId: string; phase: string }): Promise<{ conversationId: string; metricsId: string }> {
   const { projectId, phase } = input
 
   db.update(projects)
@@ -262,6 +264,16 @@ export async function setupPhase(input: { projectId: string; phase: string }): P
 
   _broadcast({ type: 'phase:started', payload: { projectId, phase } })
   logActivity(projectId, null, null, `Phase started: ${phase}`, `Entering ${phase} phase`, 'milestone', phase)
+
+  // Create phase metrics record
+  const metricsId = uuid()
+  db.insert(phaseMetrics).values({
+    id: metricsId,
+    projectId,
+    phase,
+    startedAt: new Date(),
+    status: 'in_progress',
+  }).run()
 
   const conversationId = uuid()
   const title = `${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase Discussion`
@@ -275,7 +287,7 @@ export async function setupPhase(input: { projectId: string; phase: string }): P
   }).run()
 
   _broadcast({ type: 'conversation:created', payload: { projectId, conversationId, title, phase } })
-  return { conversationId }
+  return { conversationId, metricsId }
 }
 
 export async function runAgentWork(input: {
@@ -283,8 +295,10 @@ export async function runAgentWork(input: {
   phase: string
   role: string
   conversationId: string
+  metricsId?: string
 }): Promise<void> {
-  const { projectId, phase, role, conversationId } = input
+  const { projectId, phase, role, conversationId, metricsId } = input
+  const agentStartTime = Date.now()
 
   const roleConfig = AGENT_ROLES[role as AgentRole]
   if (!roleConfig) throw new Error(`Unknown agent role: ${role}`)
@@ -438,8 +452,31 @@ export async function runAgentWork(input: {
   db.update(agents).set({ status: 'done', progress: 100, currentTask: null }).where(eq(agents.id, agentRecord.id)).run()
   _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'done', progress: 100 } })
 
+  // Track agent duration in phase metrics
+  const agentDurationMs = Date.now() - agentStartTime
+  if (metricsId) {
+    const metric = db.select().from(phaseMetrics).where(eq(phaseMetrics.id, metricsId)).get()
+    if (metric) {
+      const durations = JSON.parse(metric.agentDurations || '{}')
+      durations[role] = {
+        startedAt: new Date(agentStartTime).toISOString(),
+        completedAt: new Date().toISOString(),
+        durationMs: agentDurationMs,
+      }
+      db.update(phaseMetrics)
+        .set({
+          agentDurations: JSON.stringify(durations),
+          taskCount: metric.taskCount + (TASK_TEMPLATES[phase]?.[role]?.length ?? 0),
+          artifactCount: metric.artifactCount + (artifactType ? 1 : 0),
+          messageCount: metric.messageCount + 1,
+        })
+        .where(eq(phaseMetrics.id, metricsId))
+        .run()
+    }
+  }
+
   const toolInfo = usedCodingAgent ? ' (using coding agent)' : ''
-  logActivity(projectId, agentRecord.id, role, `${roleConfig.name} completed work${toolInfo}`, `Finished ${phase} phase tasks`, 'success', phase)
+  logActivity(projectId, agentRecord.id, role, `${roleConfig.name} completed work${toolInfo}`, `Finished ${phase} phase tasks in ${Math.round(agentDurationMs / 1000)}s`, 'success', phase)
 
   // Small delay for visual pacing
   await new Promise(resolve => setTimeout(resolve, 300))
@@ -449,6 +486,7 @@ export async function runCollaborationRound(input: {
   projectId: string
   phase: string
   conversationId: string
+  metricsId?: string
 }): Promise<void> {
   const { projectId, phase, conversationId } = input
 
@@ -499,11 +537,25 @@ export async function completePhase(input: {
   projectId: string
   phase: string
   conversationId: string
+  metricsId?: string
 }): Promise<void> {
-  const { projectId, phase, conversationId } = input
+  const { projectId, phase, conversationId, metricsId } = input
   db.update(conversations).set({ status: 'resolved' }).where(eq(conversations.id, conversationId)).run()
+
+  // Finalize phase metrics
+  if (metricsId) {
+    const metric = db.select().from(phaseMetrics).where(eq(phaseMetrics.id, metricsId)).get()
+    const durationMs = metric ? Date.now() - new Date(metric.startedAt).getTime() : 0
+    db.update(phaseMetrics)
+      .set({ completedAt: new Date(), status: 'completed' })
+      .where(eq(phaseMetrics.id, metricsId))
+      .run()
+    logActivity(projectId, null, null, `Phase completed: ${phase}`, `${phase} phase finished in ${Math.round(durationMs / 1000)}s`, 'success', phase)
+  } else {
+    logActivity(projectId, null, null, `Phase completed: ${phase}`, `${phase} phase finished successfully`, 'success', phase)
+  }
+
   _broadcast({ type: 'phase:completed', payload: { projectId, phase } })
-  logActivity(projectId, null, null, `Phase completed: ${phase}`, `${phase} phase finished successfully`, 'success', phase)
 }
 
 export async function completeProject(input: { projectId: string }): Promise<void> {

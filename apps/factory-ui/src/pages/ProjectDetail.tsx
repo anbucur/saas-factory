@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Users, MessageSquare, KanbanSquare, FileText, Activity, LayoutDashboard, Terminal } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Users, MessageSquare, KanbanSquare, FileText, Activity, LayoutDashboard, Terminal, BarChart3, Code } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store/store';
 import { ProjectOverview } from '../components/project/ProjectOverview';
@@ -9,8 +9,10 @@ import { ConversationView } from '../components/project/ConversationView';
 import { SprintBoard } from '../components/project/SprintBoard';
 import { ArtifactsView } from '../components/project/ArtifactsView';
 import { ActivityLog } from '../components/project/ActivityLog';
+import { AnalyticsView } from '../components/project/AnalyticsView';
+import { FileBrowser } from '../components/project/FileBrowser';
 
-type Tab = 'overview' | 'team' | 'conversations' | 'board' | 'artifacts' | 'logs';
+type Tab = 'overview' | 'team' | 'conversations' | 'board' | 'artifacts' | 'files' | 'analytics' | 'logs';
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -18,6 +20,8 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'conversations', label: 'Conversations', icon: MessageSquare },
   { id: 'board', label: 'Sprint Board', icon: KanbanSquare },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
+  { id: 'files', label: 'Files', icon: Code },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'logs', label: 'Activity', icon: Activity },
 ];
 
@@ -55,6 +59,9 @@ export function ProjectDetail() {
     try {
       if (!silent) setLoading(true);
       const data = await api.getProject(id!);
+      // Ensure new fields have defaults for backwards compat
+      if (!data.metrics) data.metrics = [];
+      if (!data.generatedFiles) data.generatedFiles = [];
       setCurrentProject(data);
     } catch (err: any) {
       if (!silent) setError(err.message);
@@ -75,6 +82,15 @@ export function ProjectDetail() {
   async function handlePause() {
     try {
       await api.pauseProject(id!);
+      loadProject();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  async function handleResume() {
+    try {
+      await api.resumeProject(id!);
       loadProject();
     } catch (err: any) {
       alert(err.message);
@@ -106,6 +122,14 @@ export function ProjectDetail() {
     failed: 'bg-red-500',
   };
 
+  const statusLabels: Record<string, string> = {
+    planning: 'Planning',
+    in_progress: 'In Progress',
+    paused: 'Paused',
+    completed: 'Completed',
+    failed: 'Failed',
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -121,7 +145,9 @@ export function ProjectDetail() {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-lg font-bold text-white">{currentProject.name}</h1>
-                <span className={`w-2 h-2 rounded-full ${statusColors[currentProject.status]}`} />
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium text-white ${statusColors[currentProject.status]}`}>
+                  {statusLabels[currentProject.status]}
+                </span>
               </div>
               <p className="text-xs text-zinc-500 mt-0.5 max-w-lg truncate">{currentProject.description}</p>
             </div>
@@ -151,7 +177,7 @@ export function ProjectDetail() {
 
             {currentProject.status === 'paused' && (
               <button
-                onClick={handleStart}
+                onClick={handleResume}
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
               >
                 <Play className="w-4 h-4" />
@@ -172,12 +198,12 @@ export function ProjectDetail() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mt-4 -mb-px">
+        <div className="flex gap-1 mt-4 -mb-px overflow-x-auto">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === id
                   ? 'border-blue-500 text-blue-400 bg-zinc-900'
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -212,6 +238,8 @@ export function ProjectDetail() {
         {activeTab === 'conversations' && <ConversationView project={currentProject} />}
         {activeTab === 'board' && <SprintBoard project={currentProject} />}
         {activeTab === 'artifacts' && <ArtifactsView project={currentProject} />}
+        {activeTab === 'files' && <FileBrowser project={currentProject} />}
+        {activeTab === 'analytics' && <AnalyticsView project={currentProject} />}
         {activeTab === 'logs' && <ActivityLog project={currentProject} />}
       </div>
     </div>

@@ -312,6 +312,8 @@ describe('Database Schema', () => {
     expect(schema.tasks).toBeDefined();
     expect(schema.artifacts).toBeDefined();
     expect(schema.activityLog).toBeDefined();
+    expect(schema.phaseMetrics).toBeDefined();
+    expect(schema.generatedFiles).toBeDefined();
   });
 });
 

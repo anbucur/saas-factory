@@ -3,8 +3,13 @@ import { z } from 'zod'
 import { Client } from '@temporalio/client'
 import { v4 as uuid } from 'uuid'
 import { db } from '../db/index.js'
-import { projects, agents, conversations, messages, tasks, artifacts, activityLog } from '../db/schema.js'
-import { eq, desc } from 'drizzle-orm'
+import { projects, agents, conversations, messages, tasks, artifacts, activityLog, phaseMetrics, generatedFiles } from '../db/schema.js'
+import { eq, desc, and, sql } from 'drizzle-orm'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { AGENT_ROLES } from '../agents/roles.js'
 import { isCodingAgentAvailable } from '../agents/coding-agent.js'
 import type { AgentRole } from '../agents/roles.js'
@@ -52,6 +57,8 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
     const projectArtifacts = db.select().from(artifacts).where(eq(artifacts.projectId, projectId)).all()
     const projectConversations = db.select().from(conversations).where(eq(conversations.projectId, projectId)).all()
     const projectLogs = db.select().from(activityLog).where(eq(activityLog.projectId, projectId)).all()
+    const projectMetrics = db.select().from(phaseMetrics).where(eq(phaseMetrics.projectId, projectId)).all()
+    const projectFiles = db.select().from(generatedFiles).where(eq(generatedFiles.projectId, projectId)).all()
 
     return c.json({
       ...project,
@@ -61,6 +68,11 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
       artifacts: projectArtifacts,
       conversations: projectConversations,
       logs: projectLogs,
+      metrics: projectMetrics.map(m => ({
+        ...m,
+        agentDurations: JSON.parse(m.agentDurations || '{}'),
+      })),
+      generatedFiles: projectFiles,
     })
   })
 
@@ -254,6 +266,244 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
     return _c.json(isCodingAgentAvailable())
   })
 
+  // Get phase metrics for a project
+  app.get('/:id/metrics', (c) => {
+    const projectId = c.req.param('id')
+    const metrics = db.select().from(phaseMetrics).where(eq(phaseMetrics.projectId, projectId)).all()
+    return c.json(metrics.map(m => ({
+      ...m,
+      agentDurations: JSON.parse(m.agentDurations || '{}'),
+    })))
+  })
+
+  // Get project analytics summary
+  app.get('/:id/analytics', (c) => {
+    const projectId = c.req.param('id')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+
+    const metrics = db.select().from(phaseMetrics).where(eq(phaseMetrics.projectId, projectId)).all()
+    const projectTasks = db.select().from(tasks).where(eq(tasks.projectId, projectId)).all()
+    const projectArtifacts = db.select().from(artifacts).where(eq(artifacts.projectId, projectId)).all()
+    const projectAgents = db.select().from(agents).where(eq(agents.projectId, projectId)).all()
+    const projectMessages = db.select().from(messages).where(eq(messages.projectId, projectId)).all()
+
+    // Calculate total duration
+    const startTime = project.createdAt ? new Date(project.createdAt).getTime() : 0
+    const endTime = project.completedAt ? new Date(project.completedAt).getTime() : Date.now()
+    const totalDurationMs = endTime - startTime
+
+    // Phase durations
+    const phaseDurations = metrics.map(m => {
+      const started = new Date(m.startedAt).getTime()
+      const completed = m.completedAt ? new Date(m.completedAt).getTime() : Date.now()
+      return {
+        phase: m.phase,
+        durationMs: completed - started,
+        status: m.status,
+        agentDurations: JSON.parse(m.agentDurations || '{}'),
+        taskCount: m.taskCount,
+        artifactCount: m.artifactCount,
+        messageCount: m.messageCount,
+      }
+    })
+
+    // Agent performance
+    const agentPerformance = projectAgents.map(agent => {
+      const agentTasks = projectTasks.filter(t => t.assigneeId === agent.id)
+      const agentArtifacts = projectArtifacts.filter(a => a.agentId === agent.id)
+      const agentMessages = projectMessages.filter(m => m.agentId === agent.id)
+
+      // Sum up durations from phase metrics
+      let totalAgentDurationMs = 0
+      for (const m of metrics) {
+        const durations = JSON.parse(m.agentDurations || '{}')
+        if (durations[agent.role]?.durationMs) {
+          totalAgentDurationMs += durations[agent.role].durationMs
+        }
+      }
+
+      return {
+        agentId: agent.id,
+        role: agent.role,
+        name: agent.name,
+        status: agent.status,
+        tasksCompleted: agentTasks.filter(t => t.status === 'done').length,
+        tasksTotal: agentTasks.length,
+        artifactsCreated: agentArtifacts.length,
+        messagesCount: agentMessages.length,
+        totalDurationMs: totalAgentDurationMs,
+        estimatedHours: agentTasks.reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0),
+      }
+    })
+
+    // Task breakdown by status
+    const taskBreakdown = {
+      backlog: projectTasks.filter(t => t.status === 'backlog').length,
+      todo: projectTasks.filter(t => t.status === 'todo').length,
+      in_progress: projectTasks.filter(t => t.status === 'in_progress').length,
+      review: projectTasks.filter(t => t.status === 'review').length,
+      done: projectTasks.filter(t => t.status === 'done').length,
+    }
+
+    // Artifact breakdown by type
+    const artifactBreakdown: Record<string, number> = {}
+    for (const art of projectArtifacts) {
+      artifactBreakdown[art.type] = (artifactBreakdown[art.type] || 0) + 1
+    }
+
+    return c.json({
+      totalDurationMs,
+      phaseDurations,
+      agentPerformance,
+      taskBreakdown,
+      artifactBreakdown,
+      totals: {
+        tasks: projectTasks.length,
+        artifacts: projectArtifacts.length,
+        messages: projectMessages.length,
+        conversations: metrics.length,
+        estimatedHours: projectTasks.reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0),
+      },
+    })
+  })
+
+  // Search artifacts
+  app.get('/:id/artifacts/search', (c) => {
+    const projectId = c.req.param('id')
+    const query = c.req.query('q') || ''
+    const type = c.req.query('type')
+    const phase = c.req.query('phase')
+
+    let projectArtifacts = db.select().from(artifacts).where(eq(artifacts.projectId, projectId)).all()
+
+    if (query) {
+      const lower = query.toLowerCase()
+      projectArtifacts = projectArtifacts.filter(a =>
+        a.title.toLowerCase().includes(lower) || a.content.toLowerCase().includes(lower)
+      )
+    }
+    if (type) {
+      projectArtifacts = projectArtifacts.filter(a => a.type === type)
+    }
+    if (phase) {
+      projectArtifacts = projectArtifacts.filter(a => a.phase === phase)
+    }
+
+    return c.json(projectArtifacts)
+  })
+
+  // Get generated files for a project
+  app.get('/:id/files', (c) => {
+    const projectId = c.req.param('id')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+
+    // Scan actual generated directory
+    const projectName = project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    const generatedDir = path.resolve(__dirname, '../../../../generated', projectName)
+
+    const files: Array<{ path: string; type: string; size: number }> = []
+
+    function scanDir(dir: string, prefix = '') {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
+          if (entry.isDirectory()) {
+            if (entry.name !== 'node_modules' && entry.name !== '.git') {
+              scanDir(path.join(dir, entry.name), relativePath)
+            }
+          } else {
+            const ext = path.extname(entry.name).slice(1)
+            const stat = fs.statSync(path.join(dir, entry.name))
+            files.push({ path: relativePath, type: ext || 'unknown', size: stat.size })
+          }
+        }
+      } catch { /* directory may not exist */ }
+    }
+
+    scanDir(generatedDir)
+
+    // Also return DB-tracked files
+    const dbFiles = db.select().from(generatedFiles).where(eq(generatedFiles.projectId, projectId)).all()
+
+    return c.json({
+      directory: generatedDir,
+      exists: fs.existsSync(generatedDir),
+      files,
+      trackedFiles: dbFiles,
+      totalFiles: files.length,
+      totalSize: files.reduce((sum, f) => sum + f.size, 0),
+    })
+  })
+
+  // Read a specific generated file
+  app.get('/:id/files/content', (c) => {
+    const projectId = c.req.param('id')
+    const filePath = c.req.query('path')
+    if (!filePath) return c.json({ error: 'path query param required' }, 400)
+
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+
+    const projectName = project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    const generatedDir = path.resolve(__dirname, '../../../../generated', projectName)
+    const fullPath = path.resolve(generatedDir, filePath)
+
+    // Security: ensure the resolved path is within the generated directory
+    if (!fullPath.startsWith(generatedDir)) {
+      return c.json({ error: 'Invalid path' }, 400)
+    }
+
+    try {
+      const content = fs.readFileSync(fullPath, 'utf-8')
+      const stat = fs.statSync(fullPath)
+      return c.json({
+        path: filePath,
+        content,
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+      })
+    } catch {
+      return c.json({ error: 'File not found' }, 404)
+    }
+  })
+
+  // Export project data
+  app.get('/:id/export', (c) => {
+    const projectId = c.req.param('id')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+
+    const projectAgents = db.select().from(agents).where(eq(agents.projectId, projectId)).all()
+    const projectTasks = db.select().from(tasks).where(eq(tasks.projectId, projectId)).all()
+    const projectArtifacts = db.select().from(artifacts).where(eq(artifacts.projectId, projectId)).all()
+    const projectConversations = db.select().from(conversations).where(eq(conversations.projectId, projectId)).all()
+    const projectMessages = db.select().from(messages).where(eq(messages.projectId, projectId)).all()
+    const projectLogs = db.select().from(activityLog).where(eq(activityLog.projectId, projectId)).all()
+    const projectMetrics = db.select().from(phaseMetrics).where(eq(phaseMetrics.projectId, projectId)).all()
+
+    return c.json({
+      exportedAt: new Date().toISOString(),
+      version: '2.0',
+      project: {
+        ...project,
+        config: JSON.parse(project.config || '{}'),
+      },
+      agents: projectAgents,
+      tasks: projectTasks,
+      artifacts: projectArtifacts,
+      conversations: projectConversations,
+      messages: projectMessages,
+      logs: projectLogs,
+      metrics: projectMetrics.map(m => ({
+        ...m,
+        agentDurations: JSON.parse(m.agentDurations || '{}'),
+      })),
+    })
+  })
+
   // Delete project
   app.delete('/:id', async (c) => {
     const projectId = c.req.param('id')
@@ -267,6 +517,8 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
       await handle.terminate('Project deleted')
     } catch { /* workflow may not exist */ }
 
+    db.delete(generatedFiles).where(eq(generatedFiles.projectId, projectId)).run()
+    db.delete(phaseMetrics).where(eq(phaseMetrics.projectId, projectId)).run()
     db.delete(activityLog).where(eq(activityLog.projectId, projectId)).run()
     db.delete(artifacts).where(eq(artifacts.projectId, projectId)).run()
     db.delete(tasks).where(eq(tasks.projectId, projectId)).run()

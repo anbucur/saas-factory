@@ -10,6 +10,7 @@ export interface SetupPhaseInput {
 
 export interface SetupPhaseOutput {
   conversationId: string
+  metricsId: string
 }
 
 export interface RunAgentWorkInput {
@@ -17,18 +18,21 @@ export interface RunAgentWorkInput {
   phase: string
   role: string
   conversationId: string
+  metricsId?: string
 }
 
 export interface RunCollaborationRoundInput {
   projectId: string
   phase: string
   conversationId: string
+  metricsId?: string
 }
 
 export interface CompletePhaseInput {
   projectId: string
   phase: string
   conversationId: string
+  metricsId?: string
 }
 
 export interface CompleteProjectInput {

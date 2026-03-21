@@ -107,6 +107,30 @@ export function initializeDatabase() {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS phase_metrics (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      phase TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      agent_durations TEXT NOT NULL DEFAULT '{}',
+      task_count INTEGER NOT NULL DEFAULT 0,
+      artifact_count INTEGER NOT NULL DEFAULT 0,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'in_progress'
+    );
+
+    CREATE TABLE IF NOT EXISTS generated_files (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      file_path TEXT NOT NULL,
+      file_type TEXT NOT NULL DEFAULT 'unknown',
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      agent_role TEXT,
+      phase TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_agents_project ON agents(project_id);
     CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
@@ -115,6 +139,8 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(project_id);
     CREATE INDEX IF NOT EXISTS idx_activity_log_project ON activity_log(project_id);
+    CREATE INDEX IF NOT EXISTS idx_phase_metrics_project ON phase_metrics(project_id);
+    CREATE INDEX IF NOT EXISTS idx_generated_files_project ON generated_files(project_id);
   `);
 
   console.log('[DB] Database initialized at', DB_PATH);

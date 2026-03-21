@@ -1,5 +1,5 @@
 const MINIMAX_API_URL = 'https://api.minimax.chat/v1/text/chatcompletion_v2';
-const MINIMAX_MODEL = 'MiniMax-M1';
+const MINIMAX_MODEL = 'MiniMax-M2.7';
 
 interface LLMMessage {
   role: 'system' | 'user' | 'assistant';

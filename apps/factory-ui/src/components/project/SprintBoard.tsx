@@ -1,5 +1,8 @@
-import type { ProjectDetail, AgentRole, TaskStatus, TaskPriority } from '../../types';
+import { useState } from 'react';
+import type { ProjectDetail, AgentRole, TaskStatus, TaskPriority, Task } from '../../types';
 import { AGENT_ROLE_META } from '../../types';
+import { api } from '../../lib/api';
+import { GripVertical, Clock, X } from 'lucide-react';
 
 interface Props {
   project: ProjectDetail;
@@ -20,12 +23,67 @@ const PRIORITY_COLORS: Record<TaskPriority, string> = {
   critical: 'bg-red-500',
 };
 
+const PRIORITY_LABELS: Record<TaskPriority, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
+};
+
 export function SprintBoard({ project }: Props) {
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [activeSprint, setActiveSprint] = useState<number | null>(null);
+
   // Group tasks by sprint
   const sprints = [...new Set(project.tasks.map(t => t.sprint))].sort();
-  const activeSprint = sprints[sprints.length - 1] || 1;
+  const currentSprint = activeSprint ?? (sprints[sprints.length - 1] || 1);
 
-  const sprintTasks = project.tasks.filter(t => t.sprint === activeSprint);
+  const sprintTasks = project.tasks.filter(t => t.sprint === currentSprint);
+
+  function handleDragStart(e: React.DragEvent, taskId: string) {
+    setDraggedTaskId(taskId);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragOver(e: React.DragEvent, columnId: TaskStatus) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverColumn(columnId);
+  }
+
+  function handleDragLeave() {
+    setDragOverColumn(null);
+  }
+
+  async function handleDrop(e: React.DragEvent, newStatus: TaskStatus) {
+    e.preventDefault();
+    setDragOverColumn(null);
+
+    if (!draggedTaskId) return;
+
+    const task = project.tasks.find(t => t.id === draggedTaskId);
+    if (!task || task.status === newStatus) {
+      setDraggedTaskId(null);
+      return;
+    }
+
+    // Optimistic update
+    task.status = newStatus;
+    if (newStatus === 'done') task.completedAt = new Date().toISOString();
+    setDraggedTaskId(null);
+
+    try {
+      await api.updateTask(project.id, draggedTaskId, { status: newStatus });
+    } catch (err) {
+      console.error('Failed to update task:', err);
+    }
+  }
+
+  // Estimate totals
+  const totalEstimated = sprintTasks.reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0);
+  const doneEstimated = sprintTasks.filter(t => t.status === 'done').reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0);
 
   return (
     <div className="p-6">
@@ -34,27 +92,41 @@ export function SprintBoard({ project }: Props) {
         <h3 className="text-sm font-semibold text-white">Sprint Board</h3>
         <div className="flex gap-1">
           {sprints.map(s => (
-            <span
+            <button
               key={s}
-              className={`px-2 py-0.5 rounded text-xs ${
-                s === activeSprint ? 'bg-blue-500/20 text-blue-400' : 'bg-zinc-800 text-zinc-500'
+              onClick={() => setActiveSprint(s)}
+              className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                s === currentSprint ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
               }`}
             >
               Sprint {s}
-            </span>
+            </button>
           ))}
         </div>
-        <span className="text-xs text-zinc-500 ml-auto">
-          {sprintTasks.filter(t => t.status === 'done').length}/{sprintTasks.length} tasks done
-        </span>
+        <div className="ml-auto flex items-center gap-4 text-xs text-zinc-500">
+          <span className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {doneEstimated}/{totalEstimated}h
+          </span>
+          <span>
+            {sprintTasks.filter(t => t.status === 'done').length}/{sprintTasks.length} tasks done
+          </span>
+        </div>
       </div>
 
       {/* Kanban Board */}
       <div className="grid grid-cols-5 gap-3">
         {COLUMNS.map(column => {
           const columnTasks = sprintTasks.filter(t => t.status === column.id);
+          const isDragOver = dragOverColumn === column.id;
           return (
-            <div key={column.id} className="min-h-[300px]">
+            <div
+              key={column.id}
+              className="min-h-[300px]"
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, column.id)}
+            >
               {/* Column Header */}
               <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg bg-zinc-900 border-t-2 ${column.color}`}>
                 <span className="text-xs font-medium text-zinc-300">{column.label}</span>
@@ -63,45 +135,161 @@ export function SprintBoard({ project }: Props) {
                 </span>
               </div>
 
-              {/* Tasks */}
-              <div className="space-y-2 pt-2">
-                {columnTasks.map(task => {
-                  const assignee = project.agents.find(a => a.id === task.assigneeId);
-                  const assigneeMeta = assignee ? AGENT_ROLE_META[assignee.role as AgentRole] : null;
+              {/* Drop zone indicator */}
+              <div className={`transition-colors ${isDragOver ? 'bg-blue-500/5 border border-dashed border-blue-500/30 rounded-b-lg' : ''}`}>
+                {/* Tasks */}
+                <div className="space-y-2 pt-2 min-h-[50px]">
+                  {columnTasks.map(task => {
+                    const assignee = project.agents.find(a => a.id === task.assigneeId);
+                    const assigneeMeta = assignee ? AGENT_ROLE_META[assignee.role as AgentRole] : null;
+                    const isDragging = draggedTaskId === task.id;
 
-                  return (
-                    <div
-                      key={task.id}
-                      className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors"
-                    >
-                      <div className="flex items-start gap-2 mb-2">
-                        <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${PRIORITY_COLORS[task.priority]}`} />
-                        <span className="text-xs text-zinc-300 leading-relaxed">{task.title}</span>
+                    return (
+                      <div
+                        key={task.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, task.id)}
+                        onClick={() => setSelectedTask(task)}
+                        className={`p-3 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-all cursor-grab active:cursor-grabbing ${
+                          isDragging ? 'opacity-40' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-2 mb-2">
+                          <GripVertical className="w-3 h-3 text-zinc-700 mt-0.5 flex-shrink-0" />
+                          <div className="flex items-start gap-1.5 flex-1">
+                            <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${PRIORITY_COLORS[task.priority]}`} />
+                            <span className="text-xs text-zinc-300 leading-relaxed">{task.title}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between ml-5">
+                          {assigneeMeta && (
+                            <span className="text-[10px] flex items-center gap-1 text-zinc-500">
+                              {assigneeMeta.emoji} {assigneeMeta.title}
+                            </span>
+                          )}
+                          {task.estimatedHours && (
+                            <span className="text-[10px] text-zinc-600">{task.estimatedHours}h</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        {assigneeMeta && (
-                          <span className="text-[10px] flex items-center gap-1 text-zinc-500">
-                            {assigneeMeta.emoji} {assigneeMeta.title}
-                          </span>
-                        )}
-                        {task.estimatedHours && (
-                          <span className="text-[10px] text-zinc-600">{task.estimatedHours}h</span>
-                        )}
-                      </div>
+                    );
+                  })}
+
+                  {columnTasks.length === 0 && !isDragOver && (
+                    <div className="p-4 text-center text-[10px] text-zinc-600 border border-dashed border-zinc-800 rounded-lg">
+                      No tasks
                     </div>
-                  );
-                })}
-
-                {columnTasks.length === 0 && (
-                  <div className="p-4 text-center text-[10px] text-zinc-600 border border-dashed border-zinc-800 rounded-lg">
-                    No tasks
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Task Detail Drawer */}
+      {selectedTask && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={() => setSelectedTask(null)}>
+          <div className="w-96 bg-zinc-950 border-l border-zinc-800 h-full overflow-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="text-sm font-semibold text-white">{selectedTask.title}</h3>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="p-1 rounded hover:bg-zinc-800 text-zinc-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Status</label>
+                  <div className="flex gap-1.5 mt-1">
+                    {COLUMNS.map(col => (
+                      <button
+                        key={col.id}
+                        onClick={async () => {
+                          selectedTask.status = col.id;
+                          setSelectedTask({ ...selectedTask });
+                          await api.updateTask(project.id, selectedTask.id, { status: col.id });
+                        }}
+                        className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                          selectedTask.status === col.id
+                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                            : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {col.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Priority</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[selectedTask.priority]}`} />
+                    <span className="text-xs text-zinc-300">{PRIORITY_LABELS[selectedTask.priority]}</span>
+                  </div>
+                </div>
+
+                {selectedTask.description && (
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Description</label>
+                    <p className="text-xs text-zinc-400 mt-1">{selectedTask.description}</p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Assignee</label>
+                  <div className="mt-1">
+                    {(() => {
+                      const assignee = project.agents.find(a => a.id === selectedTask.assigneeId);
+                      const meta = assignee ? AGENT_ROLE_META[assignee.role as AgentRole] : null;
+                      return meta ? (
+                        <span className="text-xs text-zinc-300">{meta.emoji} {meta.name}</span>
+                      ) : (
+                        <span className="text-xs text-zinc-500">Unassigned</span>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Phase</label>
+                    <p className="text-xs text-zinc-400 mt-1 capitalize">{selectedTask.phase}</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Sprint</label>
+                    <p className="text-xs text-zinc-400 mt-1">Sprint {selectedTask.sprint}</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Estimated</label>
+                    <p className="text-xs text-zinc-400 mt-1">{selectedTask.estimatedHours ?? '-'}h</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Created</label>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {new Date(selectedTask.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedTask.completedAt && (
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Completed</label>
+                    <p className="text-xs text-emerald-400 mt-1">
+                      {new Date(selectedTask.completedAt).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* All sprints summary */}
       {sprints.length > 1 && (
@@ -121,7 +309,7 @@ export function SprintBoard({ project }: Props) {
                       style={{ width: `${progress}%` }}
                     />
                   </div>
-                  <span className="text-xs text-zinc-500 w-12 text-right">{progress}%</span>
+                  <span className="text-xs text-zinc-500 w-16 text-right">{sDone}/{sTasks.length}</span>
                 </div>
               );
             })}

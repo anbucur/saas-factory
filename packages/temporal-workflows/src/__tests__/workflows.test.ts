@@ -180,9 +180,41 @@ describe('Workflow Sequence', () => {
       runTests: ['buildUI'],
       deploy: ['runTests'],
     }
-    
+
     expect(dependencies.scaffoldProject).toContain('generateSpec')
     expect(dependencies.writeCode).toContain('scaffoldProject')
     expect(dependencies.deploy).toContain('runTests')
+  })
+})
+
+describe('Activity Stubs with Metrics', () => {
+  it('SetupPhaseOutput should include metricsId', () => {
+    const output = {
+      conversationId: 'conv-123',
+      metricsId: 'metric-456',
+    }
+    expect(output.conversationId).toBeTruthy()
+    expect(output.metricsId).toBeTruthy()
+  })
+
+  it('RunAgentWorkInput should accept optional metricsId', () => {
+    const input = {
+      projectId: 'proj-1',
+      phase: 'requirements',
+      role: 'pm',
+      conversationId: 'conv-1',
+      metricsId: 'metric-1',
+    }
+    expect(input.metricsId).toBe('metric-1')
+  })
+
+  it('CompletePhaseInput should accept optional metricsId', () => {
+    const input = {
+      projectId: 'proj-1',
+      phase: 'requirements',
+      conversationId: 'conv-1',
+      metricsId: 'metric-1',
+    }
+    expect(input.metricsId).toBe('metric-1')
   })
 })

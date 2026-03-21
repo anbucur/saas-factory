@@ -84,6 +84,30 @@ export const activityLog = sqliteTable('activity_log', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
+export const phaseMetrics = sqliteTable('phase_metrics', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  phase: text('phase').notNull(),
+  startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  agentDurations: text('agent_durations').notNull().default('{}'), // JSON: { role: { startedAt, completedAt, durationMs } }
+  taskCount: integer('task_count').notNull().default(0),
+  artifactCount: integer('artifact_count').notNull().default(0),
+  messageCount: integer('message_count').notNull().default(0),
+  status: text('status', { enum: ['in_progress', 'completed', 'failed'] }).notNull().default('in_progress'),
+});
+
+export const generatedFiles = sqliteTable('generated_files', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  filePath: text('file_path').notNull(),
+  fileType: text('file_type').notNull().default('unknown'), // ts, tsx, json, etc.
+  sizeBytes: integer('size_bytes').notNull().default(0),
+  agentRole: text('agent_role'),
+  phase: text('phase').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
 // Type exports
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
@@ -93,3 +117,5 @@ export type Message = typeof messages.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Artifact = typeof artifacts.$inferSelect;
 export type ActivityLogEntry = typeof activityLog.$inferSelect;
+export type PhaseMetric = typeof phaseMetrics.$inferSelect;
+export type GeneratedFile = typeof generatedFiles.$inferSelect;
