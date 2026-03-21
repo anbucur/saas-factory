@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react';
 import type { ProjectDetail, AgentRole } from '../../types';
 import { AGENT_ROLE_META, PHASE_META } from '../../types';
+import { api } from '../../lib/api';
+import { Terminal } from 'lucide-react';
 
 interface Props {
   project: ProjectDetail;
@@ -14,9 +17,29 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   done: { label: 'Done', color: 'text-emerald-400', bg: 'bg-emerald-500/20' },
 };
 
+const CODING_ROLES: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops', 'qa'];
+
 export function AgentTeam({ project }: Props) {
+  const [codingAgent, setCodingAgent] = useState<{ available: boolean; name: string } | null>(null);
+
+  useEffect(() => {
+    api.getCodingAgentStatus().then(setCodingAgent).catch(() => {});
+  }, []);
+
   return (
     <div className="p-6">
+      {codingAgent && (
+        <div className={`mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
+          codingAgent.available
+            ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+            : 'bg-zinc-800 border border-zinc-700 text-zinc-500'
+        }`}>
+          <Terminal className="w-3.5 h-3.5" />
+          {codingAgent.available
+            ? `${codingAgent.name} is available - coding agents (FE Dev, BE Dev, QA, DevOps) will use it for code generation`
+            : 'No coding CLI available - using LLM fallback for code generation'}
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {project.agents.map((agent) => {
           const roleMeta = AGENT_ROLE_META[agent.role as AgentRole];
@@ -49,9 +72,17 @@ export function AgentTeam({ project }: Props) {
                     <p className="text-xs text-zinc-500">{roleMeta.title}</p>
                   </div>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-[10px] font-medium ${statusConfig.color} ${statusConfig.bg}`}>
-                  {statusConfig.label}
-                </span>
+                <div className="flex items-center gap-2">
+                  {CODING_ROLES.includes(agent.role as AgentRole) && codingAgent?.available && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
+                      <Terminal className="w-2.5 h-2.5" />
+                      {codingAgent.name}
+                    </span>
+                  )}
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-medium ${statusConfig.color} ${statusConfig.bg}`}>
+                    {statusConfig.label}
+                  </span>
+                </div>
               </div>
 
               {/* Progress */}

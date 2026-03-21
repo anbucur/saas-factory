@@ -6,6 +6,7 @@ import { initializeDatabase } from './db/index.js'
 import { AgentEngine } from './agents/engine.js'
 import { createProjectRoutes } from './routes/projects.js'
 import { AGENT_ROLES } from './agents/roles.js'
+import { isCodingAgentAvailable } from './agents/coding-agent.js'
 
 // Initialize database
 initializeDatabase()
@@ -36,7 +37,12 @@ const engine = new AgentEngine(broadcast)
 
 // Health check
 app.get('/api/health', (c) => {
-  return c.json({ status: 'ok', timestamp: new Date().toISOString() })
+  const codingAgent = isCodingAgentAvailable()
+  return c.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    codingAgent,
+  })
 })
 
 // Agent roles metadata
@@ -44,12 +50,24 @@ app.get('/api/agents/roles', (c) => {
   return c.json(AGENT_ROLES)
 })
 
+// Coding agent status
+app.get('/api/coding-agent/status', (c) => {
+  return c.json(isCodingAgentAvailable())
+})
+
 // Mount project routes
 app.route('/api/projects', createProjectRoutes(engine))
 
 // Start HTTP server
 const port = 3010
-console.log(`🚀 SaaS Factory API running on http://localhost:${port}`)
+console.log(`SaaS Factory API running on http://localhost:${port}`)
+
+const codingAgent = isCodingAgentAvailable()
+if (codingAgent.available) {
+  console.log(`Coding Agent: ${codingAgent.name} (available)`)
+} else {
+  console.log('Coding Agent: not available (using fallback mode)')
+}
 
 const server = serve({
   fetch: app.fetch,

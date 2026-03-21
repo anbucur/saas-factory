@@ -77,6 +77,22 @@ export function createProjectRoutes(engine: AgentEngine) {
     return c.json({ status: 'started' });
   });
 
+  // Pause project
+  app.post('/:id/pause', async (c) => {
+    const projectId = c.req.param('id');
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
+    if (!project) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+
+    if (!engine.isRunning(projectId)) {
+      return c.json({ error: 'Project is not running' }, 409);
+    }
+
+    await engine.pauseProject(projectId);
+    return c.json({ status: 'paused' });
+  });
+
   // Get project agents
   app.get('/:id/agents', (c) => {
     const projectId = c.req.param('id');
@@ -132,6 +148,11 @@ export function createProjectRoutes(engine: AgentEngine) {
     const projectId = c.req.param('id');
     const logs = db.select().from(activityLog).where(eq(activityLog.projectId, projectId)).all();
     return c.json(logs);
+  });
+
+  // Get coding agent status
+  app.get('/:id/coding-agent', (c) => {
+    return c.json(engine.getCodingAgentStatus());
   });
 
   // Delete project

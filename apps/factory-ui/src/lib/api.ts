@@ -56,6 +56,14 @@ export const api = {
   // Logs
   getProjectLogs: (projectId: string) => request<any[]>(`/projects/${projectId}/logs`),
 
+  // Pause project
+  pauseProject: (id: string) =>
+    request<{ status: string }>(`/projects/${id}/pause`, { method: 'POST' }),
+
+  // Coding agent
+  getCodingAgentStatus: () =>
+    request<{ available: boolean; name: string }>('/coding-agent/status'),
+
   // Health
-  health: () => request<{ status: string; timestamp: string }>('/health'),
+  health: () => request<{ status: string; timestamp: string; codingAgent?: { available: boolean; name: string } }>('/health'),
 };

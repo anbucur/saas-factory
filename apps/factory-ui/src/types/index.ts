@@ -151,6 +151,7 @@ export type WSEvent =
   | { type: 'project:created'; payload: { projectId: string; name: string; description: string } }
   | { type: 'project:started'; payload: { projectId: string } }
   | { type: 'project:completed'; payload: { projectId: string } }
+  | { type: 'project:paused'; payload: { projectId: string } }
   | { type: 'project:failed'; payload: { projectId: string; error: string } }
   | { type: 'phase:started'; payload: { projectId: string; phase: string } }
   | { type: 'phase:completed'; payload: { projectId: string; phase: string } }
@@ -158,7 +159,8 @@ export type WSEvent =
   | { type: 'agent:progress'; payload: { projectId: string; agentId: string; role: string; progress: number; status: string } }
   | { type: 'message:created'; payload: { projectId: string; conversationId: string; message: Message } }
   | { type: 'task:created'; payload: { projectId: string; taskId: string; title: string; status: string; assigneeId: string; phase: string } }
-  | { type: 'artifact:created'; payload: { projectId: string; artifactId: string; title: string; type: string } }
+  | { type: 'artifact:created'; payload: { projectId: string; artifactId: string; title: string; type: string; agentId?: string; agentRole?: string; phase?: string } }
+  | { type: 'conversation:created'; payload: { projectId: string; conversationId: string; title: string; phase: string } }
   | { type: 'activity:log'; payload: ActivityLogEntry & { createdAt: string } };
 
 // ============ UI Constants ============

@@ -81,6 +81,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         break;
       }
 
+      case 'project:paused': {
+        const { projectId } = event.payload;
+        if (state.currentProject?.id === projectId) {
+          set({
+            currentProject: {
+              ...state.currentProject,
+              status: 'paused',
+            },
+          });
+        }
+        set({
+          projects: state.projects.map(p =>
+            p.id === projectId ? { ...p, status: 'paused' as const } : p
+          ),
+        });
+        break;
+      }
+
       case 'project:failed': {
         const { projectId } = event.payload;
         if (state.currentProject?.id === projectId) {
@@ -210,6 +228,27 @@ export const useAppStore = create<AppState>((set, get) => ({
             currentProject: {
               ...state.currentProject,
               artifacts: [...state.currentProject.artifacts, newArtifact],
+            },
+          });
+        }
+        break;
+      }
+
+      case 'conversation:created': {
+        const { projectId, conversationId, title, phase } = event.payload;
+        if (state.currentProject?.id === projectId) {
+          const newConvo = {
+            id: conversationId,
+            projectId,
+            title,
+            phase,
+            status: 'active' as const,
+            createdAt: new Date().toISOString(),
+          };
+          set({
+            currentProject: {
+              ...state.currentProject,
+              conversations: [...state.currentProject.conversations, newConvo],
             },
           });
         }

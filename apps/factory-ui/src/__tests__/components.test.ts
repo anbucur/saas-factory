@@ -1,5 +1,6 @@
 /**
  * Frontend Tests for SaaS Factory v2
+ * Includes tests for coding agent UI integration
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -64,6 +65,7 @@ describe('Agent Statuses', () => {
     expect(statuses).toContain('idle');
     expect(statuses).toContain('thinking');
     expect(statuses).toContain('working');
+    expect(statuses).toContain('reviewing');
     expect(statuses).toContain('done');
   });
 });
@@ -80,6 +82,10 @@ describe('Project Status', () => {
   it('should include terminal states', () => {
     expect(statuses).toContain('completed');
     expect(statuses).toContain('failed');
+  });
+
+  it('should include paused state', () => {
+    expect(statuses).toContain('paused');
   });
 });
 
@@ -215,6 +221,31 @@ describe('App Store', () => {
     expect(useAppStore.getState().currentProject?.status).toBe('in_progress');
   });
 
+  it('should handle project:paused event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-pause', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+    });
+
+    store.setProjects([{
+      id: 'proj-pause', name: 'Test', description: 'Test', status: 'in_progress' as const,
+      currentPhase: 'development' as const, config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agentCount: 7, taskCount: 0, completedTaskCount: 0, progress: 0,
+    }]);
+
+    store.handleWSEvent({
+      type: 'project:paused',
+      payload: { projectId: 'proj-pause' },
+    });
+
+    expect(useAppStore.getState().currentProject?.status).toBe('paused');
+    expect(useAppStore.getState().projects[0].status).toBe('paused');
+  });
+
   it('should handle project:completed event', async () => {
     const { useAppStore } = await import('../store/store');
     const store = useAppStore.getState();
@@ -276,6 +307,57 @@ describe('App Store', () => {
     expect(updatedAgent?.currentTask).toBe('Creating plan');
   });
 
+  it('should handle agent:status with reviewing status (coding agent)', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-review', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [{
+        id: 'agent-pm', projectId: 'proj-review', role: 'pm', name: 'Project Manager',
+        status: 'idle', currentTask: null, progress: 0, createdAt: '',
+      }],
+      tasks: [], artifacts: [], conversations: [], logs: [],
+    });
+
+    store.handleWSEvent({
+      type: 'agent:status',
+      payload: { projectId: 'proj-review', agentId: 'agent-pm', role: 'pm', status: 'reviewing', task: 'Reviewing phase work' },
+    });
+
+    const updatedAgent = useAppStore.getState().currentProject?.agents[0];
+    expect(updatedAgent?.status).toBe('reviewing');
+    expect(updatedAgent?.currentTask).toBe('Reviewing phase work');
+  });
+
+  it('should handle conversation:created event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-convo', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+    });
+
+    store.handleWSEvent({
+      type: 'conversation:created',
+      payload: {
+        projectId: 'proj-convo',
+        conversationId: 'conv-1',
+        title: 'Requirements Phase Discussion',
+        phase: 'requirements',
+      },
+    });
+
+    const convos = useAppStore.getState().currentProject?.conversations;
+    expect(convos).toHaveLength(1);
+    expect(convos![0].title).toBe('Requirements Phase Discussion');
+    expect(convos![0].phase).toBe('requirements');
+    expect(convos![0].status).toBe('active');
+  });
+
   it('should handle task:created event', async () => {
     const { useAppStore } = await import('../store/store');
     const store = useAppStore.getState();
@@ -293,6 +375,35 @@ describe('App Store', () => {
 
     expect(useAppStore.getState().currentProject?.tasks).toHaveLength(1);
     expect(useAppStore.getState().currentProject?.tasks[0].title).toBe('Write spec');
+  });
+
+  it('should handle artifact:created event with agent info', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-art', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [],
+    });
+
+    store.handleWSEvent({
+      type: 'artifact:created',
+      payload: {
+        projectId: 'proj-art',
+        artifactId: 'art-1',
+        title: 'Frontend Developer - development Output',
+        type: 'code',
+        agentId: 'agent-fe',
+        agentRole: 'frontend_dev',
+        phase: 'development',
+      },
+    });
+
+    const artifacts = useAppStore.getState().currentProject?.artifacts;
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts![0].type).toBe('code');
+    expect(artifacts![0].title).toContain('Frontend Developer');
   });
 
   it('should handle activity:log event', async () => {
@@ -357,6 +468,7 @@ describe('API Client', () => {
     expect(typeof api.getProject).toBe('function');
     expect(typeof api.createProject).toBe('function');
     expect(typeof api.startProject).toBe('function');
+    expect(typeof api.pauseProject).toBe('function');
     expect(typeof api.deleteProject).toBe('function');
     expect(typeof api.getProjectAgents).toBe('function');
     expect(typeof api.getProjectConversations).toBe('function');
@@ -365,7 +477,35 @@ describe('API Client', () => {
     expect(typeof api.updateTask).toBe('function');
     expect(typeof api.getProjectArtifacts).toBe('function');
     expect(typeof api.getProjectLogs).toBe('function');
+    expect(typeof api.getCodingAgentStatus).toBe('function');
     expect(typeof api.health).toBe('function');
+  });
+});
+
+// ============ Coding Agent UI Tests ============
+
+describe('Coding Agent Roles', () => {
+  const codingRoles: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops', 'qa'];
+  const thinkingRoles: AgentRole[] = ['pm', 'ba', 'architect'];
+
+  it('coding roles should have metadata', () => {
+    codingRoles.forEach(role => {
+      expect(AGENT_ROLE_META[role]).toBeDefined();
+      expect(AGENT_ROLE_META[role].name).toBeTruthy();
+    });
+  });
+
+  it('thinking roles should have metadata', () => {
+    thinkingRoles.forEach(role => {
+      expect(AGENT_ROLE_META[role]).toBeDefined();
+      expect(AGENT_ROLE_META[role].name).toBeTruthy();
+    });
+  });
+
+  it('all 7 roles should be covered between coding and thinking', () => {
+    const allRoles = [...codingRoles, ...thinkingRoles];
+    expect(allRoles).toHaveLength(7);
+    expect(new Set(allRoles).size).toBe(7);
   });
 });
 
@@ -424,5 +564,34 @@ describe('Data Structure Contracts', () => {
     expect(agent.role).toBeTruthy();
     expect(agent.name).toBeTruthy();
     expect(typeof agent.progress).toBe('number');
+  });
+
+  it('Agent with coding status should be valid', () => {
+    const agent = {
+      id: 'a2', projectId: 'p1', role: 'frontend_dev' as AgentRole,
+      name: 'Frontend Developer', status: 'working' as AgentStatus,
+      currentTask: 'Writing code with Claude Code', progress: 40, createdAt: '',
+    };
+
+    expect(agent.currentTask).toContain('Claude Code');
+    expect(agent.progress).toBeGreaterThan(0);
+  });
+});
+
+// ============ WebSocket Event Type Completeness Tests ============
+
+describe('WebSocket Event Types', () => {
+  it('should handle all event types', async () => {
+    const { useAppStore } = await import('../store/store');
+    const handleWSEvent = useAppStore.getState().handleWSEvent;
+
+    // These should not throw when called with valid events
+    expect(() => handleWSEvent({ type: 'connected', payload: { timestamp: '' } })).not.toThrow();
+    expect(() => handleWSEvent({ type: 'project:started', payload: { projectId: 'x' } })).not.toThrow();
+    expect(() => handleWSEvent({ type: 'project:paused', payload: { projectId: 'x' } })).not.toThrow();
+    expect(() => handleWSEvent({ type: 'project:completed', payload: { projectId: 'x' } })).not.toThrow();
+    expect(() => handleWSEvent({ type: 'project:failed', payload: { projectId: 'x', error: 'err' } })).not.toThrow();
+    expect(() => handleWSEvent({ type: 'phase:started', payload: { projectId: 'x', phase: 'requirements' } })).not.toThrow();
+    expect(() => handleWSEvent({ type: 'phase:completed', payload: { projectId: 'x', phase: 'requirements' } })).not.toThrow();
   });
 });

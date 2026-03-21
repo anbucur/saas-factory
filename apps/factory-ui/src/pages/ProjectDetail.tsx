@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Users, MessageSquare, KanbanSquare, FileText, Activity, LayoutDashboard } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Users, MessageSquare, KanbanSquare, FileText, Activity, LayoutDashboard, Terminal } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store/store';
 import { ProjectOverview } from '../components/project/ProjectOverview';
@@ -28,10 +28,14 @@ export function ProjectDetail() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [codingAgent, setCodingAgent] = useState<{ available: boolean; name: string } | null>(null);
 
   useEffect(() => {
     if (!id) return;
     loadProject();
+
+    // Load coding agent status
+    api.getCodingAgentStatus().then(setCodingAgent).catch(() => {});
 
     // Poll for updates every 3 seconds while project is in progress
     const interval = setInterval(() => {
@@ -62,6 +66,15 @@ export function ProjectDetail() {
   async function handleStart() {
     try {
       await api.startProject(id!);
+      loadProject();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  async function handlePause() {
+    try {
+      await api.pauseProject(id!);
       loadProject();
     } catch (err: any) {
       alert(err.message);
@@ -114,15 +127,48 @@ export function ProjectDetail() {
             </div>
           </div>
 
-          {currentProject.status === 'planning' && (
-            <button
-              onClick={handleStart}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              <Play className="w-4 h-4" />
-              Start Build
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {codingAgent && (
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs ${
+                codingAgent.available
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                  : 'bg-zinc-800 border border-zinc-700 text-zinc-500'
+              }`}>
+                <Terminal className="w-3 h-3" />
+                {codingAgent.available ? codingAgent.name : 'No coding agent'}
+              </div>
+            )}
+
+            {currentProject.status === 'planning' && (
+              <button
+                onClick={handleStart}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Play className="w-4 h-4" />
+                Start Build
+              </button>
+            )}
+
+            {currentProject.status === 'paused' && (
+              <button
+                onClick={handleStart}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Play className="w-4 h-4" />
+                Resume
+              </button>
+            )}
+
+            {currentProject.status === 'in_progress' && (
+              <button
+                onClick={handlePause}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <Pause className="w-4 h-4" />
+                Pause
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
