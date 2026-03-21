@@ -65,6 +65,7 @@ export interface ProjectDetail extends Project {
   logs: ActivityLogEntry[];
   metrics: PhaseMetric[];
   generatedFiles: GeneratedFile[];
+  deployments: Deployment[];
 }
 
 // ============ Task Types ============
@@ -180,6 +181,58 @@ export interface GeneratedFile {
   createdAt: string;
 }
 
+// ============ Deployments ============
+
+export type DeploymentStrategy = 'docker' | 'vercel' | 'static';
+
+export type DeploymentStatus = 'pending' | 'building' | 'deploying' | 'running' | 'failed' | 'stopped' | 'obsolete';
+
+export interface Deployment {
+  id: string;
+  projectId: string;
+  strategy: DeploymentStrategy;
+  status: DeploymentStatus;
+  url: string | null;
+  containerId: string | null;
+  vercelDeploymentId: string | null;
+  port: number | null;
+  buildLog: string;
+  errorLog: string;
+  stackDetected: StackInfo;
+  dockerfileGenerated: boolean;
+  retryCount: number;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  stoppedAt: string | null;
+}
+
+export interface StackInfo {
+  framework?: string;       // e.g. 'next', 'react', 'express', 'hono', 'fastify'
+  language?: string;         // e.g. 'typescript', 'javascript'
+  runtime?: string;          // e.g. 'node', 'bun', 'deno'
+  hasBackend?: boolean;
+  hasFrontend?: boolean;
+  hasDatabase?: boolean;
+  databaseType?: string;     // e.g. 'postgres', 'sqlite', 'mysql', 'mongodb'
+  packageManager?: string;   // e.g. 'npm', 'yarn', 'pnpm', 'bun'
+  isMonorepo?: boolean;
+  buildCommand?: string;
+  startCommand?: string;
+  frontendFramework?: string;
+  backendFramework?: string;
+  recommendedStrategies: DeploymentStrategy[];
+}
+
+export interface DeploymentOption {
+  strategy: DeploymentStrategy;
+  label: string;
+  description: string;
+  recommended: boolean;
+  requirements: string[];
+  estimatedTime: string;
+}
+
 // ============ Analytics ============
 
 export interface ProjectAnalytics {
@@ -233,7 +286,13 @@ export type WSEvent =
   | { type: 'task:created'; payload: { projectId: string; taskId: string; title: string; status: string; assigneeId: string; phase: string } }
   | { type: 'artifact:created'; payload: { projectId: string; artifactId: string; title: string; type: string; agentId?: string; agentRole?: string; phase?: string } }
   | { type: 'conversation:created'; payload: { projectId: string; conversationId: string; title: string; phase: string } }
-  | { type: 'activity:log'; payload: ActivityLogEntry & { createdAt: string } };
+  | { type: 'activity:log'; payload: ActivityLogEntry & { createdAt: string } }
+  | { type: 'deployment:started'; payload: { projectId: string; deploymentId: string; strategy: DeploymentStrategy } }
+  | { type: 'deployment:building'; payload: { projectId: string; deploymentId: string; log: string } }
+  | { type: 'deployment:running'; payload: { projectId: string; deploymentId: string; url: string } }
+  | { type: 'deployment:failed'; payload: { projectId: string; deploymentId: string; error: string } }
+  | { type: 'deployment:stopped'; payload: { projectId: string; deploymentId: string } }
+  | { type: 'deployment:options'; payload: { projectId: string; options: DeploymentOption[] } };
 
 // ============ UI Constants ============
 

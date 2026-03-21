@@ -13,7 +13,7 @@
  * - Phase metrics tracking (duration, agent performance)
  */
 
-import { proxyActivities, setHandler, defineSignal, condition } from '@temporalio/workflow'
+import { proxyActivities, setHandler, defineSignal, defineQuery, condition } from '@temporalio/workflow'
 import type * as activities from './activities.js'
 
 const {
@@ -23,6 +23,8 @@ const {
   completePhase,
   completeProject,
   failProject,
+  prepareDeployment,
+  executeDeployment,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30m',
   retry: {
@@ -35,13 +37,20 @@ const {
 
 export const pauseSignal = defineSignal('pause')
 export const resumeSignal = defineSignal('resume')
+export const deploySignal = defineSignal<[{ strategy: 'docker' | 'vercel' | 'static' }]>('deploy')
+export const deploymentStatusQuery = defineQuery<{ status: string; url?: string; options?: unknown[] }>('deploymentStatus')
 
 export async function buildSaaSProject(input: { projectId: string }): Promise<void> {
   const { projectId } = input
 
   let paused = false
+  let chosenStrategy: 'docker' | 'vercel' | 'static' | null = null
+  const deploymentState: { status: string; url?: string; options?: unknown[] } = { status: 'pending' }
+
   setHandler(pauseSignal, () => { paused = true })
   setHandler(resumeSignal, () => { paused = false })
+  setHandler(deploySignal, ({ strategy }) => { chosenStrategy = strategy })
+  setHandler(deploymentStatusQuery, () => deploymentState)
 
   async function waitIfPaused() {
     if (paused) await condition(() => !paused)
@@ -90,6 +99,24 @@ export async function buildSaaSProject(input: { projectId: string }): Promise<vo
     const { conversationId: deployConvId, metricsId: deployMetricsId } = await setupPhase({ projectId, phase: 'deployment' })
     await runAgentWork({ projectId, phase: 'deployment', role: 'devops', conversationId: deployConvId, metricsId: deployMetricsId })
     await runAgentWork({ projectId, phase: 'deployment', role: 'pm', conversationId: deployConvId, metricsId: deployMetricsId })
+
+    // Prepare deployment: detect stack and broadcast options to the user
+    const deploymentPrep = await prepareDeployment({ projectId })
+    deploymentState.status = 'awaiting_choice'
+    deploymentState.options = deploymentPrep.options
+
+    // Wait for user to choose a deployment strategy via signal, or auto-deploy with Docker
+    // If no signal received within 5 minutes, auto-deploy with the recommended strategy
+    const gotSignal = await condition(() => chosenStrategy !== null, '5m')
+
+    const strategy = chosenStrategy ?? (deploymentPrep.options.find(o => o.recommended)?.strategy as 'docker' | 'vercel' | 'static') ?? 'docker'
+
+    // Execute the chosen deployment
+    deploymentState.status = 'deploying'
+    const deployResult = await executeDeployment({ projectId, strategy })
+    deploymentState.status = deployResult.success ? 'deployed' : 'failed'
+    deploymentState.url = deployResult.url
+
     await completePhase({ projectId, phase: 'deployment', conversationId: deployConvId, metricsId: deployMetricsId })
 
     await completeProject({ projectId })

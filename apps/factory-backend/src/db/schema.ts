@@ -108,6 +108,26 @@ export const generatedFiles = sqliteTable('generated_files', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
+export const deployments = sqliteTable('deployments', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  strategy: text('strategy', { enum: ['docker', 'vercel', 'static'] }).notNull(),
+  status: text('status', { enum: ['pending', 'building', 'deploying', 'running', 'failed', 'stopped', 'obsolete'] }).notNull().default('pending'),
+  url: text('url'),
+  containerId: text('container_id'), // Docker container ID if applicable
+  vercelDeploymentId: text('vercel_deployment_id'), // Vercel deployment ID if applicable
+  port: integer('port'),
+  buildLog: text('build_log').notNull().default(''),
+  errorLog: text('error_log').notNull().default(''),
+  stackDetected: text('stack_detected').notNull().default('{}'), // JSON: detected tech stack info
+  dockerfileGenerated: integer('dockerfile_generated', { mode: 'boolean' }).notNull().default(false),
+  retryCount: integer('retry_count').notNull().default(0),
+  version: integer('version').notNull().default(1),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  stoppedAt: integer('stopped_at', { mode: 'timestamp' }),
+});
+
 // Type exports
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
@@ -119,3 +139,4 @@ export type Artifact = typeof artifacts.$inferSelect;
 export type ActivityLogEntry = typeof activityLog.$inferSelect;
 export type PhaseMetric = typeof phaseMetrics.$inferSelect;
 export type GeneratedFile = typeof generatedFiles.$inferSelect;
+export type Deployment = typeof deployments.$inferSelect;

@@ -67,3 +67,39 @@ export async function completeProject(_input: CompleteProjectInput): Promise<voi
 export async function failProject(_input: FailProjectInput): Promise<void> {
   throw new Error('Activity stub — implemented in worker')
 }
+
+export interface PrepareDeploymentInput {
+  projectId: string
+}
+
+export interface PrepareDeploymentOutput {
+  options: Array<{
+    strategy: string
+    label: string
+    description: string
+    recommended: boolean
+    requirements: string[]
+    estimatedTime: string
+  }>
+  stackDetected: Record<string, unknown>
+}
+
+export interface ExecuteDeploymentInput {
+  projectId: string
+  strategy: 'docker' | 'vercel' | 'static'
+}
+
+export interface ExecuteDeploymentOutput {
+  success: boolean
+  url: string
+  deploymentId: string
+  error?: string
+}
+
+export async function prepareDeployment(_input: PrepareDeploymentInput): Promise<PrepareDeploymentOutput> {
+  throw new Error('Activity stub — implemented in worker')
+}
+
+export async function executeDeployment(_input: ExecuteDeploymentInput): Promise<ExecuteDeploymentOutput> {
+  throw new Error('Activity stub — implemented in worker')
+}

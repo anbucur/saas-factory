@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Users, MessageSquare, KanbanSquare, FileText, Activity, LayoutDashboard, Terminal, BarChart3, Code } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Users, MessageSquare, KanbanSquare, FileText, Activity, LayoutDashboard, Terminal, BarChart3, Code, Rocket } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store/store';
 import { ProjectOverview } from '../components/project/ProjectOverview';
@@ -11,8 +11,9 @@ import { ArtifactsView } from '../components/project/ArtifactsView';
 import { ActivityLog } from '../components/project/ActivityLog';
 import { AnalyticsView } from '../components/project/AnalyticsView';
 import { FileBrowser } from '../components/project/FileBrowser';
+import { DeploymentView } from '../components/project/DeploymentView';
 
-type Tab = 'overview' | 'team' | 'conversations' | 'board' | 'artifacts' | 'files' | 'analytics' | 'logs';
+type Tab = 'overview' | 'team' | 'conversations' | 'board' | 'artifacts' | 'files' | 'deploy' | 'analytics' | 'logs';
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -21,6 +22,7 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'board', label: 'Sprint Board', icon: KanbanSquare },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
   { id: 'files', label: 'Files', icon: Code },
+  { id: 'deploy', label: 'Deploy', icon: Rocket },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'logs', label: 'Activity', icon: Activity },
 ];
@@ -62,6 +64,7 @@ export function ProjectDetail() {
       // Ensure new fields have defaults for backwards compat
       if (!data.metrics) data.metrics = [];
       if (!data.generatedFiles) data.generatedFiles = [];
+      if (!data.deployments) data.deployments = [];
       setCurrentProject(data);
     } catch (err: any) {
       if (!silent) setError(err.message);
@@ -226,6 +229,11 @@ export function ProjectDetail() {
                   {currentProject.artifacts.length}
                 </span>
               )}
+              {id === 'deploy' && currentProject.deployments?.some(d => d.status === 'running') && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px]">
+                  Live
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -239,6 +247,7 @@ export function ProjectDetail() {
         {activeTab === 'board' && <SprintBoard project={currentProject} />}
         {activeTab === 'artifacts' && <ArtifactsView project={currentProject} />}
         {activeTab === 'files' && <FileBrowser project={currentProject} />}
+        {activeTab === 'deploy' && <DeploymentView project={currentProject} />}
         {activeTab === 'analytics' && <AnalyticsView project={currentProject} />}
         {activeTab === 'logs' && <ActivityLog project={currentProject} />}
       </div>

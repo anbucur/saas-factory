@@ -19,6 +19,11 @@ import {
   type PhaseMetric,
   type ProjectAnalytics,
   type GeneratedFile,
+  type Deployment,
+  type DeploymentStrategy,
+  type DeploymentStatus,
+  type DeploymentOption,
+  type StackInfo,
 } from '../types';
 
 // ============ Type Validation Tests ============
@@ -277,6 +282,88 @@ describe('Analytics Types', () => {
   });
 });
 
+// ============ Deployment Types Tests ============
+
+describe('Deployment Types', () => {
+  it('should have 3 deployment strategies', () => {
+    const strategies: DeploymentStrategy[] = ['docker', 'vercel', 'static'];
+    expect(strategies).toHaveLength(3);
+  });
+
+  it('should have 7 deployment statuses', () => {
+    const statuses: DeploymentStatus[] = ['pending', 'building', 'deploying', 'running', 'failed', 'stopped', 'obsolete'];
+    expect(statuses).toHaveLength(7);
+  });
+
+  it('should have correct Deployment shape', () => {
+    const deployment: Deployment = {
+      id: 'dep-1',
+      projectId: 'proj-1',
+      strategy: 'docker',
+      status: 'running',
+      url: 'http://localhost:4000',
+      containerId: 'abc123',
+      vercelDeploymentId: null,
+      port: 4000,
+      buildLog: 'Build succeeded',
+      errorLog: '',
+      stackDetected: { framework: 'react', language: 'typescript', recommendedStrategies: ['docker'] },
+      dockerfileGenerated: true,
+      retryCount: 0,
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      stoppedAt: null,
+    };
+
+    expect(deployment.strategy).toBe('docker');
+    expect(deployment.status).toBe('running');
+    expect(deployment.url).toBe('http://localhost:4000');
+    expect(deployment.port).toBe(4000);
+    expect(deployment.dockerfileGenerated).toBe(true);
+    expect(deployment.stackDetected.framework).toBe('react');
+  });
+
+  it('should have correct DeploymentOption shape', () => {
+    const option: DeploymentOption = {
+      strategy: 'docker',
+      label: 'Docker Container',
+      description: 'Run in Docker',
+      recommended: true,
+      requirements: [],
+      estimatedTime: '2-5 minutes',
+    };
+
+    expect(option.strategy).toBe('docker');
+    expect(option.recommended).toBe(true);
+    expect(option.requirements).toHaveLength(0);
+  });
+
+  it('should have correct StackInfo shape', () => {
+    const stack: StackInfo = {
+      framework: 'next',
+      language: 'typescript',
+      runtime: 'node',
+      hasBackend: true,
+      hasFrontend: true,
+      hasDatabase: true,
+      databaseType: 'postgres',
+      packageManager: 'npm',
+      isMonorepo: false,
+      buildCommand: 'npm run build',
+      startCommand: 'npm start',
+      frontendFramework: 'next',
+      backendFramework: undefined,
+      recommendedStrategies: ['vercel', 'docker'],
+    };
+
+    expect(stack.framework).toBe('next');
+    expect(stack.hasBackend).toBe(true);
+    expect(stack.recommendedStrategies).toContain('vercel');
+    expect(stack.recommendedStrategies).toContain('docker');
+  });
+});
+
 // ============ Store Tests ============
 
 describe('App Store', () => {
@@ -340,7 +427,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-1', name: 'Test', description: 'Test', status: 'planning',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -358,7 +445,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-pause', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.setProjects([{
@@ -383,7 +470,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-2', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'deployment', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -402,7 +489,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-3', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -468,7 +555,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-convo', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -495,7 +582,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-5', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -514,7 +601,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-art', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -543,7 +630,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-6', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -576,7 +663,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-7', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -616,6 +703,15 @@ describe('API Client', () => {
     expect(typeof api.getProjectFiles).toBe('function');
     expect(typeof api.getFileContent).toBe('function');
     expect(typeof api.exportProject).toBe('function');
+
+    // Deployment methods
+    expect(typeof api.getDeploymentOptions).toBe('function');
+    expect(typeof api.deployProject).toBe('function');
+    expect(typeof api.getDeployments).toBe('function');
+    expect(typeof api.stopDeployment).toBe('function');
+    expect(typeof api.checkDeploymentHealth).toBe('function');
+    expect(typeof api.cleanupDeployments).toBe('function');
+    expect(typeof api.getDeploymentLogs).toBe('function');
   });
 });
 
@@ -671,7 +767,7 @@ describe('Phase-Agent Mapping Consistency', () => {
 });
 
 describe('Data Structure Contracts', () => {
-  it('ProjectDetail should contain all required arrays including metrics and files', () => {
+  it('ProjectDetail should contain all required arrays including metrics, files, and deployments', () => {
     const projectDetail = {
       id: '1', name: 'Test', description: 'Test', status: 'planning' as const,
       currentPhase: 'requirements' as const, config: {}, createdAt: '', updatedAt: '', completedAt: null,
@@ -682,6 +778,7 @@ describe('Data Structure Contracts', () => {
       logs: [],
       metrics: [],
       generatedFiles: [],
+      deployments: [],
     };
 
     expect(projectDetail.agents).toBeInstanceOf(Array);
@@ -691,6 +788,7 @@ describe('Data Structure Contracts', () => {
     expect(projectDetail.logs).toBeInstanceOf(Array);
     expect(projectDetail.metrics).toBeInstanceOf(Array);
     expect(projectDetail.generatedFiles).toBeInstanceOf(Array);
+    expect(projectDetail.deployments).toBeInstanceOf(Array);
   });
 
   it('Agent should have required fields', () => {

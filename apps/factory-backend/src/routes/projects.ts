@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Client } from '@temporalio/client'
 import { v4 as uuid } from 'uuid'
 import { db } from '../db/index.js'
-import { projects, agents, conversations, messages, tasks, artifacts, activityLog, phaseMetrics, generatedFiles } from '../db/schema.js'
+import { projects, agents, conversations, messages, tasks, artifacts, activityLog, phaseMetrics, generatedFiles, deployments } from '../db/schema.js'
 import { eq, desc, and, sql } from 'drizzle-orm'
 import fs from 'fs'
 import path from 'path'
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { AGENT_ROLES } from '../agents/roles.js'
 import { isCodingAgentAvailable } from '../agents/coding-agent.js'
+import { detectStack, getDeploymentOptions, redeployProject, stopDeployment, removeObsoleteDeployments, checkDeploymentHealth, getProjectDir } from '../agents/deployment-manager.js'
 import type { AgentRole } from '../agents/roles.js'
 
 const createProjectSchema = z.object({
@@ -59,6 +60,7 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
     const projectLogs = db.select().from(activityLog).where(eq(activityLog.projectId, projectId)).all()
     const projectMetrics = db.select().from(phaseMetrics).where(eq(phaseMetrics.projectId, projectId)).all()
     const projectFiles = db.select().from(generatedFiles).where(eq(generatedFiles.projectId, projectId)).all()
+    const projectDeployments = db.select().from(deployments).where(eq(deployments.projectId, projectId)).all()
 
     return c.json({
       ...project,
@@ -73,6 +75,10 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
         agentDurations: JSON.parse(m.agentDurations || '{}'),
       })),
       generatedFiles: projectFiles,
+      deployments: projectDeployments.map(d => ({
+        ...d,
+        stackDetected: JSON.parse(d.stackDetected || '{}'),
+      })),
     })
   })
 
@@ -504,6 +510,92 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
     })
   })
 
+  // ── Deployment endpoints ─────────────────────────────────────────────────
+
+  // Get deployment options (stack detection + feasible strategies)
+  app.get('/:id/deploy/options', (c) => {
+    const projectId = c.req.param('id')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+
+    const projectDir = getProjectDir(project.name)
+    if (!fs.existsSync(projectDir)) {
+      return c.json({ error: 'Generated project not found — build must complete first', stack: null, options: [] }, 400)
+    }
+
+    const stack = detectStack(projectDir)
+    const options = getDeploymentOptions(projectDir)
+
+    return c.json({ stack, options, projectDir })
+  })
+
+  // Deploy project with a chosen strategy (direct API call for manual deploys)
+  app.post('/:id/deploy', async (c) => {
+    const projectId = c.req.param('id')
+    const body = await c.req.json()
+    const { strategy } = body
+
+    if (!strategy || !['docker', 'vercel', 'static'].includes(strategy)) {
+      return c.json({ error: 'Invalid strategy. Must be docker, vercel, or static.' }, 400)
+    }
+
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) return c.json({ error: 'Project not found' }, 404)
+
+    // If workflow is running and awaiting deploy choice, signal it instead
+    try {
+      const handle = temporalClient.workflow.getHandle(projectId)
+      await handle.signal('deploy', { strategy })
+      return c.json({ status: 'signaled', message: `Deployment strategy '${strategy}' sent to workflow` })
+    } catch {
+      // Workflow not running — do a direct deployment
+      const result = await redeployProject(projectId, strategy, broadcast)
+      return c.json(result, result.success ? 200 : 500)
+    }
+  })
+
+  // Get all deployments for a project
+  app.get('/:id/deployments', (c) => {
+    const projectId = c.req.param('id')
+    const projectDeployments = db.select().from(deployments).where(eq(deployments.projectId, projectId)).all()
+    return c.json(projectDeployments.map(d => ({
+      ...d,
+      stackDetected: JSON.parse(d.stackDetected || '{}'),
+    })))
+  })
+
+  // Stop a deployment
+  app.post('/:id/deployments/:deploymentId/stop', async (c) => {
+    const deploymentId = c.req.param('deploymentId')
+    await stopDeployment(deploymentId, broadcast)
+    return c.json({ status: 'stopped' })
+  })
+
+  // Check deployment health
+  app.get('/:id/deployments/:deploymentId/health', async (c) => {
+    const deploymentId = c.req.param('deploymentId')
+    const health = await checkDeploymentHealth(deploymentId)
+    return c.json(health)
+  })
+
+  // Clean up obsolete deployments
+  app.post('/:id/deployments/cleanup', async (c) => {
+    const projectId = c.req.param('id')
+    const removed = await removeObsoleteDeployments(projectId, broadcast)
+    return c.json({ removed })
+  })
+
+  // Get deployment logs
+  app.get('/:id/deployments/:deploymentId/logs', (c) => {
+    const deploymentId = c.req.param('deploymentId')
+    const deployment = db.select().from(deployments).where(eq(deployments.id, deploymentId)).get()
+    if (!deployment) return c.json({ error: 'Deployment not found' }, 404)
+    return c.json({
+      buildLog: deployment.buildLog,
+      errorLog: deployment.errorLog,
+    })
+  })
+
   // Delete project
   app.delete('/:id', async (c) => {
     const projectId = c.req.param('id')
@@ -517,6 +609,14 @@ export function createProjectRoutes(broadcast: (event: unknown) => void, tempora
       await handle.terminate('Project deleted')
     } catch { /* workflow may not exist */ }
 
+    // Stop any running deployments before deleting
+    const projectDeployments = db.select().from(deployments).where(eq(deployments.projectId, projectId)).all()
+    for (const dep of projectDeployments) {
+      if (dep.status === 'running') {
+        await stopDeployment(dep.id, broadcast)
+      }
+    }
+    db.delete(deployments).where(eq(deployments.projectId, projectId)).run()
     db.delete(generatedFiles).where(eq(generatedFiles.projectId, projectId)).run()
     db.delete(phaseMetrics).where(eq(phaseMetrics.projectId, projectId)).run()
     db.delete(activityLog).where(eq(activityLog.projectId, projectId)).run()

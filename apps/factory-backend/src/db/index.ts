@@ -141,6 +141,28 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_activity_log_project ON activity_log(project_id);
     CREATE INDEX IF NOT EXISTS idx_phase_metrics_project ON phase_metrics(project_id);
     CREATE INDEX IF NOT EXISTS idx_generated_files_project ON generated_files(project_id);
+
+    CREATE TABLE IF NOT EXISTS deployments (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      strategy TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      url TEXT,
+      container_id TEXT,
+      vercel_deployment_id TEXT,
+      port INTEGER,
+      build_log TEXT NOT NULL DEFAULT '',
+      error_log TEXT NOT NULL DEFAULT '',
+      stack_detected TEXT NOT NULL DEFAULT '{}',
+      dockerfile_generated INTEGER NOT NULL DEFAULT 0,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      stopped_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);
   `);
 
   console.log('[DB] Database initialized at', DB_PATH);

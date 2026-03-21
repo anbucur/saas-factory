@@ -28,6 +28,7 @@ import { eq } from 'drizzle-orm'
 import { AGENT_ROLES } from './agents/roles.js'
 import { callLLM } from './agents/llm.js'
 import { runCodingAgent, isCodingAgentAvailable } from './agents/coding-agent.js'
+import { detectStack, getDeploymentOptions, redeployProject, getProjectDir } from './agents/deployment-manager.js'
 import type { AgentRole } from './agents/roles.js'
 
 const require = createRequire(import.meta.url)
@@ -578,6 +579,62 @@ export async function failProject(input: { projectId: string; error: string }): 
   logActivity(projectId, null, null, 'Project failed', error, 'error', null)
 }
 
+/**
+ * Prepares deployment options after the deployment phase completes.
+ * Detects the stack, generates Docker files, and broadcasts available options to the user.
+ */
+export async function prepareDeployment(input: { projectId: string }): Promise<{
+  options: Array<{ strategy: string; label: string; description: string; recommended: boolean; requirements: string[]; estimatedTime: string }>
+  stackDetected: Record<string, unknown>
+}> {
+  const { projectId } = input
+
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+  if (!project) throw new Error(`Project ${projectId} not found`)
+
+  const projectDir = getProjectDir(project.name)
+  const stack = detectStack(projectDir)
+  const options = getDeploymentOptions(projectDir)
+
+  logActivity(projectId, null, 'devops', 'Deployment options ready',
+    `Detected stack: ${stack.framework || 'unknown'} (${stack.language || 'unknown'}). ${options.length} deployment strategies available: ${options.map(o => o.label).join(', ')}`,
+    'milestone', 'deployment')
+
+  // Broadcast deployment options to the frontend
+  _broadcast({
+    type: 'deployment:options',
+    payload: { projectId, options },
+  })
+
+  return { options, stackDetected: stack as Record<string, unknown> }
+}
+
+/**
+ * Executes the chosen deployment strategy.
+ * Called when the user selects a deployment option from the UI.
+ */
+export async function executeDeployment(input: {
+  projectId: string
+  strategy: 'docker' | 'vercel' | 'static'
+}): Promise<{ success: boolean; url: string; deploymentId: string; error?: string }> {
+  const { projectId, strategy } = input
+
+  logActivity(projectId, null, 'devops', `Starting ${strategy} deployment`,
+    `Deploying project using ${strategy} strategy`, 'info', 'deployment')
+
+  const result = await redeployProject(projectId, strategy, _broadcast)
+
+  if (result.success) {
+    logActivity(projectId, null, 'devops', 'Deployment successful',
+      `Project deployed successfully. URL: ${result.url}`, 'success', 'deployment')
+  } else {
+    logActivity(projectId, null, 'devops', 'Deployment failed',
+      `Deployment failed: ${result.error}`, 'error', 'deployment')
+  }
+
+  return result
+}
+
 // ── Worker startup ────────────────────────────────────────────────────────────
 
 export async function startWorker(): Promise<void> {
@@ -590,6 +647,8 @@ export async function startWorker(): Promise<void> {
       completePhase,
       completeProject,
       failProject,
+      prepareDeployment,
+      executeDeployment,
     },
     namespace: 'default',
     taskQueue: 'factory-builds',
