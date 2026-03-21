@@ -22,12 +22,11 @@ export interface CodingAgentResult {
 const GENERATED_DIR = path.resolve(process.cwd(), '../../generated');
 
 /**
- * Resolves which coding CLI to use: Claude Code or Opencode.
- * Prefers claude, falls back to opencode if available.
+ * Resolves the Claude Code CLI binary path.
+ * Claude Code is the only supported coding agent — no fallbacks.
  */
-function resolveCodingCLI(): { cmd: string; name: string } | null {
-  // No Bun in Node context
-  // Check common paths
+function resolveClaudeCodeCLI(): { cmd: string; name: 'Claude Code' } | null {
+  // Check common installation paths
   const claudePaths = [
     '/opt/node22/bin/claude',
     '/usr/local/bin/claude',
@@ -47,25 +46,6 @@ function resolveCodingCLI(): { cmd: string; name: string } | null {
     const paths = execSync(`${whichCmd} claude`, { encoding: 'utf-8' }).trim().split('\n').map((p: string) => p.trim());
     const validPath = process.platform === 'win32' ? (paths.find((p: string) => p.endsWith('.cmd') || p.endsWith('.exe')) || paths[0]) : paths[0];
     if (validPath) return { cmd: validPath, name: 'Claude Code' };
-  } catch (err) { console.log('DEBUG CLAUDE FIND ERR:', err); }
-
-  // Fallback: check for opencode
-  const opencodePaths = [
-    '/usr/local/bin/opencode',
-    '/usr/bin/opencode',
-  ];
-
-  for (const p of opencodePaths) {
-    if (fs.existsSync(p)) {
-      return { cmd: p, name: 'Opencode' };
-    }
-  }
-
-  try {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    const paths = execSync(`${whichCmd} opencode`, { encoding: 'utf-8' }).trim().split('\n').map((p: string) => p.trim());
-    const validPath = process.platform === 'win32' ? (paths.find((p: string) => p.endsWith('.cmd') || p.endsWith('.exe')) || paths[0]) : paths[0];
-    if (validPath) return { cmd: validPath, name: 'Opencode' };
   } catch {}
 
   return null;
@@ -85,18 +65,18 @@ function ensureProjectDirectory(projectName: string): string {
 }
 
 /**
- * Runs a coding agent (Claude Code or Opencode) to perform a development task.
+ * Runs Claude Code to perform a development task.
  * The agent operates in the project's generated directory.
  */
 export async function runCodingAgent(request: CodingAgentRequest): Promise<CodingAgentResult> {
   const startTime = Date.now();
 
-  const cli = resolveCodingCLI();
+  const cli = resolveClaudeCodeCLI();
   if (!cli) {
     return {
       success: false,
       output: '',
-      error: 'No coding agent available. Install Claude Code (`npm i -g @anthropic-ai/claude-code`) or Opencode.',
+      error: 'Claude Code is not installed. Install it with `npm i -g @anthropic-ai/claude-code`.',
       filesCreated: [],
       filesModified: [],
       duration: Date.now() - startTime,
@@ -147,25 +127,28 @@ export async function runCodingAgent(request: CodingAgentRequest): Promise<Codin
  */
 function executeCLI(cmd: string, prompt: string, cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Pass prompt via stdin to avoid shell escaping issues on Windows.
+    // `claude --print` reads from stdin when no positional prompt is given.
     const args = [
-      '--print', // Non-interactive mode - just print result
-      '--dangerously-skip-permissions', // Full permissions - no approval prompts
-      prompt,
+      '--print',
+      '--dangerously-skip-permissions',
     ];
 
     const proc = spawn(cmd, args, {
       cwd,
       env: {
         ...process.env,
-        // Ensure non-interactive
         CI: 'true',
-        // Skip any permission prompts
         DISABLE_PROMPT: '1',
       },
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 600_000, // 10 minute timeout per task
       shell: process.platform === 'win32',
     });
+
+    // Pipe the prompt via stdin so it doesn't get mangled by shell escaping
+    proc.stdin.write(prompt);
+    proc.stdin.end();
 
     let stdout = '';
     let stderr = '';
@@ -243,7 +226,7 @@ function getFilesRecursive(dir: string): string[] {
  * Checks if a coding agent CLI is available.
  */
 export function isCodingAgentAvailable(): { available: boolean; name: string } {
-  const cli = resolveCodingCLI();
+  const cli = resolveClaudeCodeCLI();
   if (cli) {
     return { available: true, name: cli.name };
   }

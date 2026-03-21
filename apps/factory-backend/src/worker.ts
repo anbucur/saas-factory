@@ -33,7 +33,7 @@ import type { AgentRole } from './agents/roles.js'
 
 const require = createRequire(import.meta.url)
 
-/** Roles that invoke Claude Code / Opencode for actual code generation */
+/** Roles that invoke Claude Code for actual code generation */
 const CODING_ROLES: AgentRole[] = ['frontend_dev', 'backend_dev', 'devops']
 
 /** Roles that invoke the coding agent during the testing phase */
@@ -494,42 +494,35 @@ export async function runAgentWork(input: {
 
   if (shouldUseCodingAgent) {
     const codingAgent = isCodingAgentAvailable()
-    if (codingAgent.available) {
-      logActivity(projectId, agentRecord.id, role, `Using ${codingAgent.name}`, `${roleConfig.name} is using ${codingAgent.name} to write code`, 'info', phase)
+    if (!codingAgent.available) {
+      const errorMsg = 'Claude Code is not installed. Code generation requires Claude Code. Install it with `npm i -g @anthropic-ai/claude-code`.'
+      logActivity(projectId, agentRecord.id, role, 'Coding agent unavailable', errorMsg, 'error', phase)
+      throw new Error(errorMsg)
+    }
 
-      const planResponse = await callLLM(roleConfig.systemPrompt, [
-        { role: 'user', content: `${context}\n\n${getPhasePrompt(phase, role)}\n\nProvide a detailed implementation plan with specific files to create and their contents. Be very specific about the code structure.` },
-      ], { maxTokens: 2000 })
+    logActivity(projectId, agentRecord.id, role, `Using ${codingAgent.name}`, `${roleConfig.name} is using ${codingAgent.name} to write code`, 'info', phase)
 
-      db.update(agents).set({ progress: 40, currentTask: `Writing code with ${codingAgent.name}` }).where(eq(agents.id, agentRecord.id)).run()
-      _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: 40, status: 'working' } })
+    const planResponse = await callLLM(roleConfig.systemPrompt, [
+      { role: 'user', content: `${context}\n\n${getPhasePrompt(phase, role)}\n\nProvide a detailed implementation plan with specific files to create and their contents. Be very specific about the code structure.` },
+    ], { maxTokens: 2000 })
 
-      const codingResult = await runCodingAgent({
-        projectId,
-        projectName: project.name,
-        task: `${getPhasePrompt(phase, role)}\n\nHere is the implementation plan from the team:\n${planResponse.content}`,
-        context,
-      })
+    db.update(agents).set({ progress: 40, currentTask: `Writing code with ${codingAgent.name}` }).where(eq(agents.id, agentRecord.id)).run()
+    _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: 40, status: 'working' } })
 
-      usedCodingAgent = true
-      if (codingResult.success) {
-        responseContent = `## Implementation Complete\n\n${planResponse.content}\n\n### Coding Agent Output\n${codingResult.output}\n\n### Files Created\n${codingResult.filesCreated.map(f => `- ${f}`).join('\n') || 'None'}\n\n### Duration\n${Math.round(codingResult.duration / 1000)}s`
-      } else {
-        responseContent = `## Implementation (Fallback Mode)\n\n${planResponse.content}\n\n*Note: ${codingResult.error ?? 'Coding agent encountered an issue, using plan output instead.'}*`
-      }
+    const codingResult = await runCodingAgent({
+      projectId,
+      projectName: project.name,
+      task: `${getPhasePrompt(phase, role)}\n\nHere is the implementation plan from the team:\n${planResponse.content}`,
+      context,
+    })
+
+    usedCodingAgent = true
+    if (codingResult.success) {
+      responseContent = `## Implementation Complete\n\n${planResponse.content}\n\n### Coding Agent Output\n${codingResult.output}\n\n### Files Created\n${codingResult.filesCreated.map(f => `- ${f}`).join('\n') || 'None'}\n\n### Duration\n${Math.round(codingResult.duration / 1000)}s`
     } else {
-      // No coding agent: run micro-tasks sequentially
-      const sections: string[] = []
-      for (let i = 0; i < mySubtasks.length; i++) {
-        const subtask = mySubtasks[i]
-        const progressPct = 20 + Math.round(((i + 1) / mySubtasks.length) * 55)
-        db.update(agents).set({ progress: progressPct, currentTask: subtask.label }).where(eq(agents.id, agentRecord.id)).run()
-        _broadcast({ type: 'agent:status', payload: { projectId, agentId: agentRecord.id, role, status: 'working', task: subtask.label } })
-        _broadcast({ type: 'agent:progress', payload: { projectId, agentId: agentRecord.id, role, progress: progressPct, status: 'working' } })
-        const resp = await callLLM(roleConfig.systemPrompt, [{ role: 'user', content: `${context}\n\n${subtask.prompt}` }], { maxTokens: subtask.maxTokens ?? 1000 })
-        sections.push(`## ${subtask.label}\n\n${resp.content}`)
-      }
-      responseContent = sections.join('\n\n---\n\n')
+      const errorMsg = codingResult.error ?? 'Claude Code failed to generate code.'
+      logActivity(projectId, agentRecord.id, role, 'Code generation failed', errorMsg, 'error', phase)
+      throw new Error(`Claude Code failed for ${roleConfig.name}: ${errorMsg}`)
     }
   } else {
     // Non-coding path: run assigned subtasks sequentially with live progress

@@ -443,7 +443,8 @@ function isDockerAvailable(): boolean {
 
 function isVercelCLIAvailable(): boolean {
   try {
-    execSync('which vercel', { stdio: 'pipe', timeout: 3000 })
+    const isWin = process.platform === 'win32'
+    execSync(isWin ? 'where vercel' : 'which vercel', { stdio: 'pipe', timeout: 3000 })
     return true
   } catch {
     return false
@@ -671,6 +672,20 @@ export async function deployWithVercel(
 
   let buildLog = `[VERCEL] Deploying ${projectName} to Vercel...\n`
   broadcast({ type: 'deployment:building', payload: { projectId, deploymentId, log: buildLog } })
+
+  // Verify Vercel CLI is available before attempting deployment
+  if (!isVercelCLIAvailable()) {
+    const errorMsg = 'Vercel CLI is not installed. Run `npm i -g vercel` then authenticate with `vercel login`.'
+    buildLog += `[ERROR] ${errorMsg}\n`
+    db.update(deployments).set({
+      status: 'failed',
+      buildLog,
+      errorLog: errorMsg,
+      updatedAt: new Date(),
+    }).where(eq(deployments.id, deploymentId)).run()
+    broadcast({ type: 'deployment:failed', payload: { projectId, deploymentId, error: errorMsg } })
+    return { deploymentId, url: '', success: false, error: errorMsg }
+  }
 
   // Deploy with Vercel CLI (no prompts, auto-confirm)
   const result = await execCommand(
