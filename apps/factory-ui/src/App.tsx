@@ -1,21 +1,23 @@
-/**
- * SaaS Factory - Main App
- * 
- * Uses the factoryStore which has proper WebSocket event handling
- */
-
-import { useFactoryStore } from './store/factoryStore'
-import { MissionControl } from './components/MissionControl'
-import { ProjectSetup } from './components/ProjectSetup'
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Layout } from './components/layout/Layout';
+import { Dashboard } from './pages/Dashboard';
+import { NewProject } from './pages/NewProject';
+import { ProjectDetail } from './pages/ProjectDetail';
+import { Settings } from './pages/Settings';
 
 function App() {
-  const { project } = useFactoryStore()
-
-  if (!project) {
-    return <ProjectSetup />
-  }
-
-  return <MissionControl />
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/new" element={<NewProject />} />
+          <Route path="/project/:id" element={<ProjectDetail />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;
