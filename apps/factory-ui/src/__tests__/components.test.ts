@@ -427,7 +427,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-1', name: 'Test', description: 'Test', status: 'planning',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -445,7 +445,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-pause', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.setProjects([{
@@ -470,7 +470,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-2', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'deployment', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -489,7 +489,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-3', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -511,7 +511,7 @@ describe('App Store', () => {
         id: 'agent-1', projectId: 'proj-4', role: 'pm', name: 'Project Manager',
         status: 'idle', currentTask: null, progress: 0, createdAt: '',
       }],
-      tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -535,7 +535,7 @@ describe('App Store', () => {
         id: 'agent-pm', projectId: 'proj-review', role: 'pm', name: 'Project Manager',
         status: 'idle', currentTask: null, progress: 0, createdAt: '',
       }],
-      tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [],
+      tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -555,7 +555,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-convo', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -582,7 +582,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-5', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -601,7 +601,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-art', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -630,7 +630,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-6', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -663,7 +663,7 @@ describe('App Store', () => {
     store.setCurrentProject({
       id: 'proj-7', name: 'Test', description: 'Test', status: 'in_progress',
       currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
-      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], deployments: [],
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
     });
 
     store.handleWSEvent({
@@ -712,6 +712,26 @@ describe('API Client', () => {
     expect(typeof api.checkDeploymentHealth).toBe('function');
     expect(typeof api.cleanupDeployments).toBe('function');
     expect(typeof api.getDeploymentLogs).toBe('function');
+  });
+
+  it('should have getArtifactPdf method that returns a fetch Response', async () => {
+    const { api } = await import('../lib/api');
+    expect(typeof api.getArtifactPdf).toBe('function');
+  });
+
+  it('should have steerProject and clearSteer methods', async () => {
+    const { api } = await import('../lib/api');
+    expect(typeof api.steerProject).toBe('function');
+    expect(typeof api.clearSteer).toBe('function');
+  });
+
+  it('should have settings and provider config methods', async () => {
+    const { api } = await import('../lib/api');
+    expect(typeof api.setApiKey).toBe('function');
+    expect(typeof api.getSettings).toBe('function');
+    expect(typeof api.updateSettings).toBe('function');
+    expect(typeof api.updateProviderConfig).toBe('function');
+    expect(typeof api.detectProviders).toBe('function');
   });
 });
 
@@ -778,6 +798,7 @@ describe('Data Structure Contracts', () => {
       logs: [],
       metrics: [],
       generatedFiles: [],
+      cliSessions: [],
       deployments: [],
     };
 
@@ -832,5 +853,158 @@ describe('WebSocket Event Types', () => {
     expect(() => handleWSEvent({ type: 'project:failed', payload: { projectId: 'x', error: 'err' } })).not.toThrow();
     expect(() => handleWSEvent({ type: 'phase:started', payload: { projectId: 'x', phase: 'requirements' } })).not.toThrow();
     expect(() => handleWSEvent({ type: 'phase:completed', payload: { projectId: 'x', phase: 'requirements' } })).not.toThrow();
+  });
+
+  it('should handle project:resumed event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-resume', name: 'Test', description: 'Test', status: 'paused',
+      currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
+    });
+
+    store.setProjects([{
+      id: 'proj-resume', name: 'Test', description: 'Test', status: 'paused' as const,
+      currentPhase: 'development' as const, config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agentCount: 7, taskCount: 0, completedTaskCount: 0, progress: 0,
+    }]);
+
+    store.handleWSEvent({
+      type: 'project:resumed',
+      payload: { projectId: 'proj-resume' },
+    });
+
+    expect(useAppStore.getState().currentProject?.status).toBe('in_progress');
+    expect(useAppStore.getState().projects[0].status).toBe('in_progress');
+  });
+
+  it('should handle project:steered event with directive', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-steer', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
+    });
+
+    store.handleWSEvent({
+      type: 'project:steered',
+      payload: { projectId: 'proj-steer', directive: 'Focus on authentication first' },
+    });
+
+    expect(useAppStore.getState().currentProject).toBeDefined();
+  });
+
+  it('should handle agent:progress event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-progress', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [{
+        id: 'agent-fe', projectId: 'proj-progress', role: 'frontend_dev', name: 'Frontend Dev',
+        status: 'idle', currentTask: null, progress: 0, createdAt: '',
+      }],
+      tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
+    });
+
+    store.handleWSEvent({
+      type: 'agent:progress',
+      payload: { projectId: 'proj-progress', agentId: 'agent-fe', role: 'frontend_dev', progress: 50, status: 'working' },
+    });
+
+    expect(useAppStore.getState().currentProject).toBeDefined();
+  });
+
+  it('should handle task:updated event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-task-upd', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'requirements', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [], tasks: [{
+        id: 'task-1', projectId: 'proj-task-upd', assigneeId: 'agent-1', title: 'Test task',
+        description: '', status: 'in_progress', priority: 'high', sprint: 1, phase: 'requirements',
+        estimatedHours: 4, createdAt: '', updatedAt: '', completedAt: null,
+      }], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
+    });
+
+    store.handleWSEvent({
+      type: 'task:updated',
+      payload: { projectId: 'proj-task-upd', taskId: 'task-1', status: 'done', completedAt: new Date().toISOString() },
+    });
+
+    const updatedTask = useAppStore.getState().currentProject?.tasks.find(t => t.id === 'task-1');
+    expect(updatedTask?.status).toBe('done');
+  });
+
+  it('should handle deployment:options event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const handleWSEvent = useAppStore.getState().handleWSEvent;
+
+    expect(() => handleWSEvent({
+      type: 'deployment:options',
+      payload: {
+        projectId: 'proj-deploy',
+        options: [{
+          strategy: 'docker',
+          label: 'Docker',
+          description: 'Deploy with Docker',
+          recommended: true,
+          requirements: [],
+          estimatedTime: '5 min',
+        }],
+      },
+    })).not.toThrow();
+  });
+
+  it('should handle cli:output event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const handleWSEvent = useAppStore.getState().handleWSEvent;
+
+    expect(() => handleWSEvent({
+      type: 'cli:output',
+      payload: {
+        projectId: 'proj-cli',
+        sessionId: 'session-1',
+        agentId: 'agent-fe',
+        agentRole: 'frontend_dev',
+        output: 'Creating file...',
+        done: false,
+      },
+    })).not.toThrow();
+
+    expect(() => handleWSEvent({
+      type: 'cli:output',
+      payload: {
+        projectId: 'proj-cli',
+        sessionId: 'session-1',
+        output: 'Done!',
+        done: true,
+      },
+    })).not.toThrow();
+  });
+
+  it('should handle project:failed event', async () => {
+    const { useAppStore } = await import('../store/store');
+    const store = useAppStore.getState();
+
+    store.setCurrentProject({
+      id: 'proj-fail', name: 'Test', description: 'Test', status: 'in_progress',
+      currentPhase: 'development', config: {}, createdAt: '', updatedAt: '', completedAt: null,
+      agents: [], tasks: [], artifacts: [], conversations: [], logs: [], metrics: [], generatedFiles: [], cliSessions: [], deployments: [],
+    });
+
+    store.handleWSEvent({
+      type: 'project:failed',
+      payload: { projectId: 'proj-fail', error: 'Build failed' },
+    });
+
+    expect(useAppStore.getState().currentProject?.status).toBe('failed');
   });
 });

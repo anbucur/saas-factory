@@ -132,6 +132,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         break;
       }
 
+      case 'project:resumed': {
+        const { projectId } = event.payload;
+        if (state.currentProject?.id === projectId) {
+          set({
+            currentProject: {
+              ...state.currentProject,
+              status: 'in_progress',
+            },
+          });
+        }
+        set({
+          projects: state.projects.map(p =>
+            p.id === projectId ? { ...p, status: 'in_progress' as const } : p
+          ),
+        });
+        state.addNotification('Project resumed', 'info');
+        break;
+      }
+
       case 'project:failed': {
         const { projectId } = event.payload;
         if (state.currentProject?.id === projectId) {
@@ -160,7 +179,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       case 'phase:completed': {
-        const { projectId, phase } = event.payload;
+        const { projectId } = event.payload;
         if (state.currentProject?.id === projectId) {
           // Phase completed, agents for this phase should be done
         }
