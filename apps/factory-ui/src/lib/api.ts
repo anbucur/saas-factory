@@ -8,7 +8,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (storedKey) {
     headers['X-Minimax-Api-Key'] = storedKey
   }
-
   const response = await fetch(`${API_BASE}${path}`, {
     headers,
     ...options,
@@ -60,13 +59,6 @@ export const api = {
 
   // Artifacts
   getProjectArtifacts: (projectId: string) => request<any[]>(`/projects/${projectId}/artifacts`),
-
-  getArtifactPdf: (projectId: string, artifactId: string) => {
-    const storedKey = localStorage.getItem('minimax_api_key')
-    const headers: Record<string, string> = {}
-    if (storedKey) headers['X-Minimax-Api-Key'] = storedKey
-    return fetch(`${API_BASE}/projects/${projectId}/artifacts/${artifactId}/pdf`, { headers })
-  },
 
   searchArtifacts: (projectId: string, params: { q?: string; type?: string; phase?: string }) => {
     const query = new URLSearchParams();
@@ -139,13 +131,6 @@ export const api = {
   getCodingAgentStatus: () =>
     request<{ available: boolean; name: string }>('/coding-agent/status'),
 
-  // CLI Sessions
-  getCLISessions: (projectId: string) =>
-    request<import('../types').CLISession[]>(`/projects/${projectId}/cli-sessions`),
-
-  getCLISession: (projectId: string, sessionId: string) =>
-    request<import('../types').CLISession>(`/projects/${projectId}/cli-sessions/${sessionId}`),
-
   // Health
   health: () => request<{ status: string; timestamp: string; codingAgent?: { available: boolean; name: string } }>('/health'),
 
@@ -154,50 +139,5 @@ export const api = {
     request<{ ok: boolean; message?: string }>('/settings/api-key', {
       method: 'POST',
       body: JSON.stringify({ apiKey }),
-    }),
-
-  // Settings - get all settings
-  getSettings: () =>
-    request<{
-      settings: {
-        activeCodingProvider: string;
-        minimaxApiKeySet: boolean;
-        soundEnabled: boolean;
-        animationsEnabled: boolean;
-      };
-      providers: {
-        available: Array<{ provider: string; name: string; available: boolean; path?: string }>;
-        info: Array<{ id: string; name: string; description: string; installUrl: string; cliName: string; detected: boolean }>;
-        configs: Record<string, { enabled: boolean; customPath?: string; additionalArgs?: string[] }>;
-      };
-    }>('/settings'),
-
-  // Settings - update settings
-  updateSettings: (data: {
-    activeCodingProvider?: string;
-    minimaxApiKey?: string;
-    soundEnabled?: boolean;
-    animationsEnabled?: boolean;
-  }) =>
-    request<{ ok: boolean }>('/settings', {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
-
-  // Settings - update provider config
-  updateProviderConfig: (provider: string, config: {
-    enabled?: boolean;
-    customPath?: string;
-    additionalArgs?: string[];
-  }) =>
-    request<{ ok: boolean; provider: string; config: any; detected: boolean; path?: string }>(`/settings/provider/${provider}`, {
-      method: 'PATCH',
-      body: JSON.stringify(config),
-    }),
-
-  // Settings - detect providers
-  detectProviders: () =>
-    request<{ providers: Array<{ provider: string; name: string; available: boolean; path?: string }> }>('/settings/detect', {
-      method: 'POST',
     }),
 };

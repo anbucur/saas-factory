@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react';
 import type { ProjectDetail, AgentRole, ArtifactType, ProjectPhase } from '../../types';
 import { AGENT_ROLE_META, PHASE_META } from '../../types';
-import { FileText, Code, Shield, Rocket, TestTube, BookOpen, X, Search, Download, Copy, Check, Maximize2, FileDown } from 'lucide-react';
+import { FileText, Code, Shield, Rocket, TestTube, BookOpen, X, Search, Download, Copy, Check, Maximize2 } from 'lucide-react';
 import { MarkdownContent } from '../MarkdownContent';
-import { api } from '../../lib/api';
 
 interface Props {
   project: ProjectDetail;
@@ -12,6 +11,8 @@ interface Props {
 const ARTIFACT_ICONS: Record<ArtifactType, any> = {
   spec: FileText,
   architecture: BookOpen,
+  design_doc: FileText,
+  requirements_doc: FileText,
   code: Code,
   test_report: TestTube,
   review: Shield,
@@ -22,6 +23,8 @@ const ARTIFACT_ICONS: Record<ArtifactType, any> = {
 const ARTIFACT_COLORS: Record<ArtifactType, string> = {
   spec: 'text-purple-400 bg-purple-500/10',
   architecture: 'text-amber-400 bg-amber-500/10',
+  design_doc: 'text-pink-400 bg-pink-500/10',
+  requirements_doc: 'text-indigo-400 bg-indigo-500/10',
   code: 'text-cyan-400 bg-cyan-500/10',
   test_report: 'text-red-400 bg-red-500/10',
   review: 'text-blue-400 bg-blue-500/10',
@@ -32,6 +35,8 @@ const ARTIFACT_COLORS: Record<ArtifactType, string> = {
 const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
   spec: 'Specification',
   architecture: 'Architecture',
+  design_doc: 'Design Doc',
+  requirements_doc: 'Requirements Doc',
   code: 'Code',
   test_report: 'Test Report',
   review: 'Review',
@@ -80,28 +85,6 @@ export function ArtifactsView({ project }: Props) {
     a.download = `${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.md`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  async function exportPdf(projectId: string, artifactId: string, title: string) {
-    try {
-      const response = await api.getArtifactPdf(projectId, artifactId);
-      if (!response.ok) throw new Error('PDF not available');
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      const blob = new Blob(['PDF not available for this artifact'], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}_error.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
   }
 
   if (project.artifacts.length === 0) {
@@ -250,13 +233,6 @@ export function ArtifactsView({ project }: Props) {
                   <Download className="w-3.5 h-3.5" />
                 </button>
                 <button
-                  onClick={() => exportPdf(project.id, artifact.id, artifact.title)}
-                  className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
-                  title="Export as PDF"
-                >
-                  <FileDown className="w-3.5 h-3.5" />
-                </button>
-                <button
                   onClick={() => setSelectedArtifact(null)}
                   className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
                 >
@@ -312,13 +288,6 @@ export function ArtifactsView({ project }: Props) {
                 >
                   <Download className="w-3 h-3" />
                   Download
-                </button>
-                <button
-                  onClick={() => exportPdf(project.id, modalArtifact.id, modalArtifact.title)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
-                >
-                  <FileDown className="w-3 h-3" />
-                  PDF
                 </button>
                 <button
                   onClick={() => setModalArtifactId(null)}

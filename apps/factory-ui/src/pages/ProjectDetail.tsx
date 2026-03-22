@@ -1,26 +1,30 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Users, MessageSquare, KanbanSquare, FileText, Activity, LayoutDashboard, Terminal, BarChart3, Code, Rocket } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Users, MessageSquare, FileText, Activity, LayoutDashboard, Terminal, BarChart3, Code, Rocket, Radar, Network, Gauge } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAppStore } from '../store/store';
 import { ProjectOverview } from '../components/project/ProjectOverview';
 import { AgentTeam } from '../components/project/AgentTeam';
 import { ConversationView } from '../components/project/ConversationView';
-import { SprintBoard } from '../components/project/SprintBoard';
+import { TasksView } from '../components/project/TasksView';
 import { ArtifactsView } from '../components/project/ArtifactsView';
 import { ActivityLog } from '../components/project/ActivityLog';
 import { AnalyticsView } from '../components/project/AnalyticsView';
 import { FileBrowser } from '../components/project/FileBrowser';
 import { DeploymentView } from '../components/project/DeploymentView';
+import { ControlRoom } from '../components/control-room/ControlRoom';
+import { LiveArchitectureFlow } from '../components/observability/LiveArchitectureFlow';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
-type Tab = 'overview' | 'team' | 'conversations' | 'board' | 'artifacts' | 'files' | 'deploy' | 'analytics' | 'logs';
+type Tab = 'overview' | 'control' | 'team' | 'conversations' | 'board' | 'architecture' | 'artifacts' | 'files' | 'deploy' | 'analytics' | 'logs';
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'control', label: 'Control Room', icon: Radar },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'conversations', label: 'Conversations', icon: MessageSquare },
-  { id: 'board', label: 'Sprint Board', icon: KanbanSquare },
+  { id: 'board', label: 'Tasks', icon: Gauge },
+  { id: 'architecture', label: 'Architecture', icon: Network },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
   { id: 'files', label: 'Files', icon: Code },
   { id: 'deploy', label: 'Deploy', icon: Rocket },
@@ -243,9 +247,11 @@ export function ProjectDetail() {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {activeTab === 'overview' && <ErrorBoundary><ProjectOverview project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'control' && <ErrorBoundary><ControlRoom /></ErrorBoundary>}
         {activeTab === 'team' && <ErrorBoundary><AgentTeam project={currentProject} /></ErrorBoundary>}
         {activeTab === 'conversations' && <ErrorBoundary><ConversationView project={currentProject} /></ErrorBoundary>}
-        {activeTab === 'board' && <ErrorBoundary><SprintBoard project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'board' && <ErrorBoundary><TasksView project={currentProject} /></ErrorBoundary>}
+        {activeTab === 'architecture' && <ErrorBoundary><LiveArchitectureFlow project={currentProject} /></ErrorBoundary>}
         {activeTab === 'artifacts' && <ErrorBoundary><ArtifactsView project={currentProject} /></ErrorBoundary>}
         {activeTab === 'files' && <ErrorBoundary><FileBrowser project={currentProject} /></ErrorBoundary>}
         {activeTab === 'deploy' && <ErrorBoundary><DeploymentView project={currentProject} /></ErrorBoundary>}

@@ -1,0 +1,239 @@
+/* Flow Animations for Live Architecture */
+
+@keyframes pulse-glow {
+  0%, 100% { 
+    filter: drop-shadow(0 0 4px currentColor);
+    opacity: 0.7;
+  }
+  50% { 
+    filter: drop-shadow(0 0 16px currentColor);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes flow-particle {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes thinking-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes typing-dots {
+  0%, 20% {
+    content: '.';
+  }
+  40% {
+    content: '..';
+  }
+  60%, 100% {
+    content: '...';
+  }
+}
+
+@keyframes data-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 20px 4px currentColor;
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 currentColor;
+  }
+}
+
+@keyframes connection-flow {
+  0% {
+    stroke-dashoffset: 20;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+.animate-thinking {
+  animation: thinking-bounce 1.5s ease-in-out infinite;
+}
+
+.animate-data-pulse {
+  animation: data-pulse 0.6s ease-out;
+}
+
+.animate-connection {
+  animation: connection-flow 1s linear infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Particle styles */
+.flow-particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.flow-particle-blue {
+  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  box-shadow: 0 0 8px #3b82f6;
+}
+
+.flow-particle-purple {
+  background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+  box-shadow: 0 0 8px #8b5cf6;
+}
+
+.flow-particle-green {
+  background: radial-gradient(circle, #10b981 0%, transparent 70%);
+  box-shadow: 0 0 8px #10b981;
+}
+
+.flow-particle-amber {
+  background: radial-gradient(circle, #f59e0b 0%, transparent 70%);
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.flow-particle-cyan {
+  background: radial-gradient(circle, #06b6d4 0%, transparent 70%);
+  box-shadow: 0 0 8px #06b6d4;
+}
+
+/* Component glow effects */
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), inset 0 0 20px rgba(59, 130, 246, 0.05);
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), inset 0 0 20px rgba(139, 92, 246, 0.05);
+}
+
+.glow-green {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3), inset 0 0 20px rgba(16, 185, 129, 0.05);
+}
+
+.glow-amber {
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.3), inset 0 0 20px rgba(245, 158, 11, 0.05);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.3), inset 0 0 20px rgba(6, 182, 212, 0.05);
+}
+
+/* Status indicators */
+.status-active {
+  position: relative;
+}
+
+.status-active::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* Thinking bubble */
+.thinking-bubble {
+  position: relative;
+  background: rgba(39, 39, 42, 0.95);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 12px;
+  padding: 8px 12px;
+  max-width: 200px;
+}
+
+.thinking-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 20px;
+  width: 12px;
+  height: 12px;
+  background: rgba(39, 39, 42, 0.95);
+  border-right: 1px solid rgba(99, 102, 241, 0.3);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+  transform: rotate(45deg);
+}
+
+/* Connection lines */
+.connection-line {
+  stroke-dasharray: 8 4;
+  animation: connection-flow 0.5s linear infinite;
+}
+
+.connection-line-active {
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px currentColor);
+}

@@ -1,6 +1,6 @@
 // ============ Agent Types ============
 
-export type AgentRole = 'pm' | 'ba' | 'architect' | 'frontend_dev' | 'backend_dev' | 'qa' | 'devops';
+export type AgentRole = 'pm' | 'ba' | 'architect' | 'ux_designer' | 'frontend_dev' | 'backend_dev' | 'qa' | 'devops';
 
 export type AgentStatus = 'idle' | 'thinking' | 'working' | 'reviewing' | 'blocked' | 'done';
 
@@ -30,7 +30,7 @@ export interface AgentRoleInfo {
 
 export type ProjectStatus = 'planning' | 'in_progress' | 'paused' | 'completed' | 'failed';
 
-export type ProjectPhase = 'requirements' | 'architecture' | 'development' | 'testing' | 'deployment' | 'completed';
+export type ProjectPhase = 'requirements' | 'architecture' | 'design' | 'development' | 'testing' | 'deployment' | 'completed';
 
 export interface Project {
   id: string;
@@ -117,7 +117,7 @@ export interface Message {
 
 // ============ Artifact Types ============
 
-export type ArtifactType = 'spec' | 'architecture' | 'code' | 'test_report' | 'review' | 'deployment_config' | 'documentation';
+export type ArtifactType = 'spec' | 'architecture' | 'design_doc' | 'code' | 'test_report' | 'review' | 'deployment_config' | 'documentation' | 'requirements_doc';
 
 export interface Artifact {
   id: string;
@@ -303,6 +303,7 @@ export const AGENT_ROLE_META: Record<AgentRole, { name: string; emoji: string; c
   pm: { name: 'Project Manager', emoji: '📋', color: '#3b82f6', title: 'PM' },
   ba: { name: 'Business Analyst', emoji: '📊', color: '#8b5cf6', title: 'BA' },
   architect: { name: 'Solution Architect', emoji: '🏗️', color: '#f59e0b', title: 'SA' },
+  ux_designer: { name: 'UX Designer', emoji: '✏️', color: '#ec4899', title: 'UX' },
   frontend_dev: { name: 'Frontend Developer', emoji: '🎨', color: '#06b6d4', title: 'FE' },
   backend_dev: { name: 'Backend Developer', emoji: '⚙️', color: '#10b981', title: 'BE' },
   qa: { name: 'QA Engineer', emoji: '🧪', color: '#ef4444', title: 'QA' },
@@ -312,10 +313,11 @@ export const AGENT_ROLE_META: Record<AgentRole, { name: string; emoji: string; c
 export const PHASE_META: Record<ProjectPhase, { label: string; description: string; color: string }> = {
   requirements: { label: 'Requirements', description: 'Gathering and analyzing project requirements', color: '#8b5cf6' },
   architecture: { label: 'Architecture', description: 'Designing system architecture and technical stack', color: '#f59e0b' },
+  design: { label: 'Design', description: 'Creating wireframes, user flows, and design system', color: '#ec4899' },
   development: { label: 'Development', description: 'Building the application', color: '#06b6d4' },
   testing: { label: 'Testing', description: 'Quality assurance and bug fixing', color: '#ef4444' },
   deployment: { label: 'Deployment', description: 'Deploying to production', color: '#10b981' },
   completed: { label: 'Completed', description: 'Project completed successfully', color: '#22c55e' },
 };
 
-export const PHASE_ORDER: ProjectPhase[] = ['requirements', 'architecture', 'development', 'testing', 'deployment', 'completed'];
+export const PHASE_ORDER: ProjectPhase[] = ['requirements', 'architecture', 'design', 'development', 'testing', 'deployment', 'completed'];

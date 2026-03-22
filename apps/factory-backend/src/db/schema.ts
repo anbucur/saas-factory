@@ -51,7 +51,7 @@ export const tasks = sqliteTable('tasks', {
   assigneeId: text('assignee_id').references(() => agents.id),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
-  status: text('status', { enum: ['backlog', 'todo', 'in_progress', 'review', 'done'] }).notNull().default('backlog'),
+  status: text('status', { enum: ['backlog', 'todo', 'in_progress', 'review', 'done', 'pending_approval', 'revision_requested'] }).notNull().default('backlog'),
   priority: text('priority', { enum: ['low', 'medium', 'high', 'critical'] }).notNull().default('medium'),
   sprint: integer('sprint').notNull().default(1),
   phase: text('phase').notNull(),
@@ -59,6 +59,14 @@ export const tasks = sqliteTable('tasks', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   completedAt: integer('completed_at', { mode: 'timestamp' }),
+  shrimpTaskId: text('shrimp_task_id'),
+  verificationScore: integer('verification_score'),
+  verificationFeedback: text('verification_feedback'),
+  parentTaskId: text('parent_task_id'),
+  dependencies: text('dependencies').notNull().default('[]'),
+  complexity: text('complexity', { enum: ['low', 'medium', 'high', 'critical'] }).notNull().default('low'),
+  needsPmApproval: integer('needs_pm_approval', { mode: 'boolean' }).notNull().default(false),
+  revisionCount: integer('revision_count').notNull().default(0),
 });
 
 export const artifacts = sqliteTable('artifacts', {
@@ -66,8 +74,10 @@ export const artifacts = sqliteTable('artifacts', {
   projectId: text('project_id').notNull().references(() => projects.id),
   agentId: text('agent_id').references(() => agents.id),
   title: text('title').notNull(),
-  type: text('type', { enum: ['spec', 'architecture', 'code', 'test_report', 'review', 'deployment_config', 'documentation'] }).notNull(),
+  type: text('type', { enum: ['spec', 'architecture', 'design_doc', 'code', 'test_report', 'review', 'deployment_config', 'documentation', 'requirements_doc'] }).notNull(),
   content: text('content').notNull(),
+  pdfContent: text('pdf_content'),
+  hasPdf: integer('has_pdf', { mode: 'boolean' }).notNull().default(false),
   phase: text('phase').notNull(),
   version: integer('version').notNull().default(1),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -129,6 +139,45 @@ export const deployments = sqliteTable('deployments', {
   stoppedAt: integer('stopped_at', { mode: 'timestamp' }),
 });
 
+export const workflowState = sqliteTable('workflow_state', {
+  id: text('id').primaryKey(), // Same as projectId
+  projectId: text('project_id').notNull().references(() => projects.id),
+  workflowType: text('workflow_type').notNull().default('buildSaaSProject'),
+  currentPhase: text('current_phase', { enum: ['requirements', 'architecture', 'development', 'testing', 'deployment', 'completed', 'failed'] }).notNull().default('requirements'),
+  completedPhases: text('completed_phases').notNull().default('[]'), // JSON array
+  phaseResults: text('phase_results').notNull().default('{}'), // JSON: { phase: { conversationId, metricsId, status, error? } }
+  deploymentState: text('deployment_state').default('{}'), // JSON: { status, url?, options?, strategy? }
+  workflowRunId: text('workflow_run_id'), // Temporal run ID for resume
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const llmCallCache = sqliteTable('llm_call_cache', {
+  id: text('id').primaryKey(), // SHA-256 hash of input
+  inputHash: text('input_hash').notNull().unique(),
+  systemPrompt: text('system_prompt').notNull(),
+  messagesHash: text('messages_hash').notNull(),
+  responseContent: text('response_content').notNull(),
+  tokensUsed: integer('tokens_used'),
+  model: text('model'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+});
+
+export const compensationLog = sqliteTable('compensation_log', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  phase: text('phase').notNull(),
+  activityName: text('activity_name').notNull(),
+  compensationType: text('compensation_type', { enum: ['delete', 'update', 'restore'] }).notNull(),
+  recordsAffected: integer('records_affected').notNull().default(0),
+  details: text('details').notNull().default('{}'), // JSON with specifics
+  status: text('status', { enum: ['pending', 'completed', 'failed'] }).notNull().default('pending'),
+  error: text('error'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+});
+
 // Type exports
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
@@ -141,3 +190,6 @@ export type ActivityLogEntry = typeof activityLog.$inferSelect;
 export type PhaseMetric = typeof phaseMetrics.$inferSelect;
 export type GeneratedFile = typeof generatedFiles.$inferSelect;
 export type Deployment = typeof deployments.$inferSelect;
+export type WorkflowState = typeof workflowState.$inferSelect;
+export type LlmCallCache = typeof llmCallCache.$inferSelect;
+export type CompensationLog = typeof compensationLog.$inferSelect;

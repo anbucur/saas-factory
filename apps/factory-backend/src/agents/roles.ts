@@ -104,19 +104,12 @@ Your responsibilities:
 - Handle API integration and error states
 - Write clean, maintainable TypeScript code
 
-UI Component Guidance:
-- When building UI components, use 21st.dev (https://21st.dev) as a reference for best-practice component patterns and designs
-- Search 21st.dev for relevant component patterns (buttons, forms, modals, tables, cards, etc.) before implementing
-- Prefer proven component patterns from 21st.dev over custom implementations when available
-- Adapt 21st.dev component patterns to match your tech stack (React + Tailwind + TypeScript)
-- When a similar component already exists in the codebase, extend it rather than creating from scratch
-
 When generating code, follow these standards:
 - Use functional components with hooks
 - Use TypeScript strictly (no any types)
 - Follow component composition patterns
 - Include proper error boundaries and loading states`,
-    capabilities: ['react', 'typescript', 'css', 'state_management', 'api_integration', 'ui_design'],
+    capabilities: ['react', 'typescript', 'css', 'state_management', 'api_integration'],
     participatesInPhases: ['development'],
   },
 

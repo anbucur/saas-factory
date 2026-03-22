@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="65" failures="0" errors="0" time="0.0393112">
+    <testsuite name="src/__tests__/components.test.ts" timestamp="2026-03-22T14:18:24.995Z" hostname="Natas" tests="65" failures="0" errors="0" skipped="0" time="0.0393112">
+        <testcase classname="src/__tests__/components.test.ts" name="Agent Types &gt; should have 8 agent roles" time="0.0013036">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Agent Types &gt; should have metadata for every role" time="0.0008825">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Agent Types &gt; should have unique colors for each role" time="0.000156">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Agent Types &gt; should have unique emojis for each role" time="0.0000713">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Agent Types &gt; should have unique titles for each role" time="0.0000864">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Agent Statuses &gt; should have 6 statuses" time="0.0001079">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Agent Statuses &gt; should include all lifecycle states" time="0.0003853">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Project Status &gt; should have 5 project statuses" time="0.0000914">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Project Status &gt; should include terminal states" time="0.0003389">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Project Status &gt; should include paused state" time="0.0001146">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Project Phases &gt; should have 7 phases including completed" time="0.0001166">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Project Phases &gt; should follow correct development order" time="0.0001035">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Project Phases &gt; should have metadata for every phase" time="0.0005559">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Project Phases &gt; should have unique colors for each phase" time="0.0000714">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Task Types &gt; should have 5 task statuses in kanban order" time="0.0001037">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Task Types &gt; should have 4 priority levels" time="0.0000533">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Artifact Types &gt; should have 7 artifact types" time="0.0000678">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Message Types &gt; should have 7 message types" time="0.0000488">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Log Types &gt; should have 5 log types" time="0.0000853">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Phase Metrics Types &gt; should have correct PhaseMetric shape" time="0.0006842">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Phase Metrics Types &gt; should support in_progress status" time="0.000109">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Generated File Types &gt; should have correct GeneratedFile shape" time="0.0001158">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Analytics Types &gt; should have correct ProjectAnalytics shape" time="0.0001696">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Deployment Types &gt; should have 3 deployment strategies" time="0.0000687">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Deployment Types &gt; should have 7 deployment statuses" time="0.0000791">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Deployment Types &gt; should have correct Deployment shape" time="0.0001168">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Deployment Types &gt; should have correct DeploymentOption shape" time="0.0000813">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Deployment Types &gt; should have correct StackInfo shape" time="0.0003822">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should initialize with default state" time="0.0187214">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should set projects" time="0.0002389">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should toggle sidebar" time="0.0001325">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should add and dismiss notifications" time="0.0002095">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle project:started event" time="0.0004678">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle project:paused event" time="0.0003064">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle project:completed event" time="0.0002069">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle phase:started event" time="0.0001119">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle agent:status event" time="0.0001175">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle agent:status with reviewing status (coding agent)" time="0.0000866">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle conversation:created event" time="0.0001423">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle task:created event" time="0.0001277">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle artifact:created event with agent info" time="0.0003414">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should handle activity:log event" time="0.0001914">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should set WebSocket connected status" time="0.000092">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="App Store &gt; should not update when event is for different project" time="0.0000838">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="API Client &gt; should export all required methods" time="0.006559">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="API Client &gt; should have getArtifactPdf method that returns a fetch Response" time="0.0001425">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="API Client &gt; should have steerProject and clearSteer methods" time="0.0001289">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="API Client &gt; should have settings and provider config methods" time="0.0000899">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Coding Agent Roles &gt; coding roles should have metadata" time="0.0000946">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Coding Agent Roles &gt; thinking roles should have metadata" time="0.0000775">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Coding Agent Roles &gt; all 8 roles should be covered between coding and thinking" time="0.0000739">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Phase-Agent Mapping Consistency &gt; every role in AGENT_ROLE_META should be a valid AgentRole" time="0.0001517">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Phase-Agent Mapping Consistency &gt; every phase in PHASE_META should be a valid ProjectPhase" time="0.0001156">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Phase-Agent Mapping Consistency &gt; PHASE_ORDER should contain all phases from PHASE_META" time="0.0001073">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Data Structure Contracts &gt; ProjectDetail should contain all required arrays including metrics, files, and deployments" time="0.0001537">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Data Structure Contracts &gt; Agent should have required fields" time="0.000068">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="Data Structure Contracts &gt; Agent with coding status should be valid" time="0.0000683">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle all event types" time="0.0005579">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle project:resumed event" time="0.0003465">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle project:steered event with directive" time="0.0001111">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle agent:progress event" time="0.0000854">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle task:updated event" time="0.0001109">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle deployment:options event" time="0.0001579">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle cli:output event" time="0.0002707">
+        </testcase>
+        <testcase classname="src/__tests__/components.test.ts" name="WebSocket Event Types &gt; should handle project:failed event" time="0.0000997">
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="157" failures="0" errors="0" time="13.2786076">
+    <testsuite name="src/__tests__/api.test.ts" timestamp="2026-03-22T17:13:24.998Z" hostname="Natas" tests="55" failures="0" errors="0" skipped="0" time="13.1959495">
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Roles &gt; should define all 7 agent roles" time="0.0017682">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Roles &gt; each role should have required fields" time="0.0010777">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Roles &gt; PM should participate in all phases" time="0.0004361">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Roles &gt; BA should only participate in requirements phase" time="0.0004673">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Roles &gt; Architect should only participate in architecture phase" time="0.0001004">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Roles &gt; QA should only participate in testing phase" time="0.0000716">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Roles &gt; DevOps should only participate in deployment phase" time="0.000117">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Configuration &gt; should define agents for all 5 development phases" time="0.0002862">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Configuration &gt; PM should be in every phase" time="0.0005547">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Configuration &gt; requirements phase should include PM and BA" time="0.0002006">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Configuration &gt; architecture phase should include PM and architect" time="0.0002327">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Configuration &gt; development phase should include PM, frontend_dev, and backend_dev" time="0.0002634">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Configuration &gt; testing phase should include PM, QA, and developers" time="0.0001566">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Configuration &gt; deployment phase should include PM and devops" time="0.0001218">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Order &gt; should have 6 phases including completed" time="0.000184">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Order &gt; should follow correct order" time="0.0001642">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Order &gt; getNextPhase should return correct next phase" time="0.0002369">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Phase Order &gt; getNextPhase should return null for completed or invalid" time="0.0001065">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Display Info &gt; should return correct info for each role" time="0.0001511">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Display Info &gt; each role should have unique colors" time="0.0000825">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Agent Display Info &gt; each role should have unique emojis" time="0.0000629">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="LLM Module &gt; should throw error when API key is not configured" time="0.007865">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="LLM Module &gt; should throw error for any role when API key is missing" time="0.000402">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; should export isCodingAgentAvailable function" time="0.0077176">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; should return availability status with name" time="0.0007998">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; should only report Claude Code — never a fallback agent" time="0.0003653">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; should export runCodingAgent function" time="0.0001396">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; runCodingAgent should return proper result structure when Claude Code is missing" time="0.00026">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; should not reference opencode anywhere in the module" time="0.0003806">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; coding roles should be correctly identified" time="0.0001286">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent &gt; non-coding roles should use MiniMax LLM" time="0.0001287">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Database Schema &gt; should initialize database without errors" time="0.2742217">
+            <system-out>
+[DB] Database initialized at C:\Users\alexa\.openclaw\workspace\saas-factory\apps\factory-backend\data\saas-factory.db
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Database Schema &gt; should have correct table schemas" time="0.0002101">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Parallel Agent Execution &gt; should define parallel groups for each phase" time="0.0001086">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Parallel Agent Execution &gt; testing phase should have developers available for bug fixes" time="0.0000719">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Project Routes Validation &gt; should validate project name length" time="0.0097768">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Project Routes Validation &gt; should validate project description length" time="0.0005275">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Project Routes Validation &gt; should validate optional config schema" time="0.0010414">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should export stack detection function" time="0.0395716">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should return empty stack info for non-existent directory" time="0.0005619">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should export deployment option functions" time="0.0001263">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should sanitize project names for directory paths" time="0.0001898">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should export Dockerfile generation functions" time="0.000079">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should generate a valid Dockerfile for a Node backend" time="0.0001498">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should generate docker-compose with postgres for db apps" time="0.0001661">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Deployment Manager &gt; should recommend vercel for Next.js apps" time="0.0001706">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent Integration Scenarios &gt; development phase should route coding roles to coding agent" time="0.0002447">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent Integration Scenarios &gt; QA should use coding agent during testing phase" time="0.0000592">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent Integration Scenarios &gt; PM should always use MiniMax LLM, never coding agent" time="0.0004143">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Coding Agent Integration Scenarios &gt; architecture phase should not use coding agent" time="0.0000728">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Worker Claude Code Enforcement &gt; worker should not silently fall back to LLM for coding roles" time="0.0003206">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Worker Claude Code Enforcement &gt; worker CODING_ROLES should only include roles that generate code" time="0.0003735">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Worker Claude Code Enforcement &gt; worker should not reference opencode" time="0.0005493">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Worker Claude Code Enforcement &gt; worker should throw on Claude Code execution failure, not use fallback text" time="0.0003008">
+        </testcase>
+        <testcase classname="src/__tests__/api.test.ts" name="Claude Code Live Execution &gt; should generate a real file using Claude Code" time="12.8395568">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/__tests__/shrimp-integration.test.ts" timestamp="2026-03-22T17:13:25.007Z" hostname="Natas" tests="52" failures="0" errors="0" skipped="0" time="0.0123825">
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; should have templates for all expected phases" time="0.0014447">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; requirements/pm: produces valid split_tasks arguments" time="0.0003761">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; requirements/pm: tasksRaw is valid JSON with correct structure" time="0.0005099">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; requirements/pm: no duplicate task names" time="0.0001031">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; requirements/ba: produces valid split_tasks arguments" time="0.0000942">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; requirements/ba: tasksRaw is valid JSON with correct structure" time="0.000255">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; requirements/ba: no duplicate task names" time="0.0000848">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; architecture/architect: produces valid split_tasks arguments" time="0.0001264">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; architecture/architect: tasksRaw is valid JSON with correct structure" time="0.0005286">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; architecture/architect: no duplicate task names" time="0.0001751">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; architecture/pm: produces valid split_tasks arguments" time="0.0001687">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; architecture/pm: tasksRaw is valid JSON with correct structure" time="0.0002026">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; architecture/pm: no duplicate task names" time="0.0000784">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/frontend_dev: produces valid split_tasks arguments" time="0.0001307">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/frontend_dev: tasksRaw is valid JSON with correct structure" time="0.0010276">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/frontend_dev: no duplicate task names" time="0.0000989">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/backend_dev: produces valid split_tasks arguments" time="0.0000842">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/backend_dev: tasksRaw is valid JSON with correct structure" time="0.0006736">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/backend_dev: no duplicate task names" time="0.0000809">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/pm: produces valid split_tasks arguments" time="0.0000601">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/pm: tasksRaw is valid JSON with correct structure" time="0.0001664">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; development/pm: no duplicate task names" time="0.0000514">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/qa: produces valid split_tasks arguments" time="0.0001266">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/qa: tasksRaw is valid JSON with correct structure" time="0.0008726">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/qa: no duplicate task names" time="0.0000926">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/pm: produces valid split_tasks arguments" time="0.0000748">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/pm: tasksRaw is valid JSON with correct structure" time="0.0001357">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/pm: no duplicate task names" time="0.000057">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/frontend_dev: produces valid split_tasks arguments" time="0.000062">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/frontend_dev: tasksRaw is valid JSON with correct structure" time="0.0001618">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/frontend_dev: no duplicate task names" time="0.0001052">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/backend_dev: produces valid split_tasks arguments" time="0.0000587">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/backend_dev: tasksRaw is valid JSON with correct structure" time="0.0001312">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; testing/backend_dev: no duplicate task names" time="0.0000443">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; deployment/devops: produces valid split_tasks arguments" time="0.0000509">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; deployment/devops: tasksRaw is valid JSON with correct structure" time="0.0003404">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; deployment/devops: no duplicate task names" time="0.0001013">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; deployment/pm: produces valid split_tasks arguments" time="0.0000492">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; deployment/pm: tasksRaw is valid JSON with correct structure" time="0.0001297">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP split_tasks payload validation &gt; deployment/pm: no duplicate task names" time="0.0000416">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP response parsing &gt; should handle null/undefined splitResult gracefully" time="0.000114">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP response parsing &gt; should handle result with missing tasks array" time="0.0000589">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP response parsing &gt; should handle result with valid tasks array" time="0.0005879">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP response parsing &gt; should handle result where tasks is not an array" time="0.0001121">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP handleResponse id handling &gt; should coerce numeric id to string for map lookup" time="0.000103">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP handleResponse id handling &gt; should silently skip id: 0 (MCP init message)" time="0.0000509">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="Shrimp MCP handleResponse id handling &gt; should not skip valid UUID ids" time="0.0001194">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="split_tasks argument edge cases &gt; should reject plain text tasksRaw (not JSON)" time="0.0001322">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="split_tasks argument edge cases &gt; should reject tasks missing implementationGuide" time="0.0000863">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="split_tasks argument edge cases &gt; should reject empty task array" time="0.000041">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="split_tasks argument edge cases &gt; should reject invalid updateMode" time="0.0000648">
+        </testcase>
+        <testcase classname="src/__tests__/shrimp-integration.test.ts" name="split_tasks argument edge cases &gt; should reject duplicate task names" time="0.0000531">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/__tests__/two-tier-tasks.test.ts" timestamp="2026-03-22T17:13:25.013Z" hostname="Natas" tests="34" failures="0" errors="0" skipped="0" time="0.0641088">
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; CORE_DELIVERABLES &gt; should define Tier 1 deliverables for all artifact-creating roles" time="0.0037355">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; CORE_DELIVERABLES &gt; should have artifactType for each Tier 1 deliverable" time="0.000803">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; CORE_DELIVERABLES &gt; should have title for each Tier 1 deliverable" time="0.0007527">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; CORE_DELIVERABLES &gt; should have description for each Tier 1 deliverable" time="0.0006959">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; CORE_DELIVERABLES &gt; should have promptTemplate for each Tier 1 deliverable" time="0.0010723">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; CORE_DELIVERABLES &gt; should map to valid artifact types" time="0.0009606">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; TIER1_ARTIFACT_ROLES &gt; should include all artifact-creating roles" time="0.0005261">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; TIER1_ARTIFACT_ROLES &gt; should not include coding-only roles" time="0.0005698">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Tier 1 Artifact Creation &gt; should create BA spec artifact in requirements phase" time="0.0005907">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Tier 1 Artifact Creation &gt; should create PM documentation in requirements phase" time="0.0003556">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Tier 1 Artifact Creation &gt; should create architecture artifact in architecture phase" time="0.0005185">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Tier 1 Artifact Creation &gt; should create design_doc artifact in design phase" time="0.0004489">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Tier 1 Artifact Creation &gt; should create test_report artifact in testing phase" time="0.0004914">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Tier 1 Artifact Creation &gt; should create deployment_config artifact in deployment phase" time="0.0003215">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Task Creation Flow &gt; should require projectId for task creation" time="0.0002827">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Task Creation Flow &gt; should require agentId for task creation" time="0.0002403">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Task Creation Flow &gt; should create tasks with parentTaskId field available" time="0.0016">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Task Creation Flow &gt; should support dependencies field as JSON array" time="0.0014194">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Task Creation Flow &gt; should create tasks linked to phase" time="0.0009289">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Phase-Artifact Mapping &gt; should map requirements/ba to artifact type spec" time="0.0003956">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Phase-Artifact Mapping &gt; should map requirements/pm to artifact type documentation" time="0.0002961">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Phase-Artifact Mapping &gt; should map architecture/architect to artifact type architecture" time="0.0003224">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Phase-Artifact Mapping &gt; should map design/ux_designer to artifact type design_doc" time="0.0003104">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Phase-Artifact Mapping &gt; should map testing/qa to artifact type test_report" time="0.0003458">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Phase-Artifact Mapping &gt; should map deployment/devops to artifact type deployment_config" time="0.0003208">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Shrimp MCP Integration &gt; should have Shrimp MCP client available for connection" time="0.0113089">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Shrimp MCP Integration &gt; should have splitTasks function available in Shrimp client" time="0.0209883">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Shrimp MCP Integration &gt; should have analyzeTask function available in Shrimp client" time="0.0005164">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Shrimp MCP Integration &gt; should have planTask function available in Shrimp client" time="0.0003923">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Shrimp MCP Integration &gt; should have verifyTask function available in Shrimp client" time="0.0003651">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Task Dependencies &gt; should support task dependencies as array" time="0.0012466">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Task Dependencies &gt; should support multiple dependencies" time="0.0017769">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Integration: Full Task Flow &gt; should create both Tier 1 artifact and Tier 2 tasks in sequence" time="0.001919">
+        </testcase>
+        <testcase classname="src/__tests__/two-tier-tasks.test.ts" name="Two-Tier Task Architecture &gt; Integration: Full Task Flow &gt; should track task status through lifecycle" time="0.0022341">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/__tests__/robustness.test.ts" timestamp="2026-03-22T17:13:25.020Z" hostname="Natas" tests="16" failures="0" errors="0" skipped="0" time="0.0061668">
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Idempotency Keys &gt; should generate consistent keys for same inputs" time="0.0012158">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Idempotency Keys &gt; should generate different keys for different inputs" time="0.0004894">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Idempotency Keys &gt; should generate phase-specific idempotency keys" time="0.0001483">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Idempotency Keys &gt; should handle missing optional parameters" time="0.000136">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="LLM Input Hashing &gt; should generate consistent hash for same inputs" time="0.0002149">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="LLM Input Hashing &gt; should generate different hash for different inputs" time="0.0001874">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="LLM Input Hashing &gt; should generate different hash for different system prompts" time="0.0002112">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; isTransientError &gt; should identify connection refused as transient" time="0.0002544">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; isTransientError &gt; should identify timeout errors as transient" time="0.0004256">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; isTransientError &gt; should identify network errors as transient" time="0.0002132">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; isTransientError &gt; should identify rate limit errors as transient" time="0.0002305">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; isTransientError &gt; should identify permanent errors as non-transient" time="0.000114">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; isTransientError &gt; should handle non-Error inputs" time="0.0001105">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; LLMRetryableError &gt; should create retryable error with message" time="0.0001888">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; LLMRetryableError &gt; should create retryable error with retry delay" time="0.0001082">
+        </testcase>
+        <testcase classname="src/lib/__tests__/robustness.test.ts" name="Error Classification &gt; LLMNonRetryableError &gt; should create non-retryable error" time="0.0001327">
+        </testcase>
+    </testsuite>
+</testsuites>

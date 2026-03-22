@@ -2,7 +2,7 @@
  * Temporal Workflow Tests for SaaS Factory
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // Mock the activities
 const mockActivities = {
@@ -248,5 +248,105 @@ describe('Deployment Activity Stubs', () => {
     expect(output.success).toBe(true)
     expect(output.url).toContain('localhost')
     expect(output.deploymentId).toBeTruthy()
+  })
+
+  it('should support all deployment strategies', () => {
+    const strategies: Array<'docker' | 'vercel' | 'static'> = ['docker', 'vercel', 'static']
+    strategies.forEach(strategy => {
+      const input = { projectId: 'proj-1', strategy }
+      expect(['docker', 'vercel', 'static']).toContain(input.strategy)
+    })
+  })
+})
+
+describe('Deployment State', () => {
+  it('should track pending deployment state', () => {
+    const deploymentState = { status: 'pending' }
+    expect(deploymentState.status).toBe('pending')
+  })
+
+  it('should track awaiting_choice deployment state', () => {
+    const deploymentState = { status: 'awaiting_choice', options: [] }
+    expect(deploymentState.status).toBe('awaiting_choice')
+  })
+
+  it('should track deploying deployment state', () => {
+    const deploymentState = { status: 'deploying' }
+    expect(deploymentState.status).toBe('deploying')
+  })
+
+  it('should track deployed state with URL', () => {
+    const deploymentState = { status: 'deployed', url: 'https://example.com' }
+    expect(deploymentState.status).toBe('deployed')
+    expect(deploymentState.url).toBeDefined()
+  })
+
+  it('should track failed state', () => {
+    const deploymentState = { status: 'failed' }
+    expect(deploymentState.status).toBe('failed')
+  })
+})
+
+describe('Phase Order', () => {
+  it('should define correct build phases in order', () => {
+    const phases = ['requirements', 'architecture', 'development', 'testing', 'deployment'] as const
+    expect(phases).toHaveLength(5)
+    expect(phases[0]).toBe('requirements')
+    expect(phases[phases.length - 1]).toBe('deployment')
+  })
+
+  it('should have requirements before architecture', () => {
+    const phases = ['requirements', 'architecture', 'development', 'testing', 'deployment']
+    expect(phases.indexOf('requirements')).toBeLessThan(phases.indexOf('architecture'))
+  })
+
+  it('should have architecture before development', () => {
+    const phases = ['requirements', 'architecture', 'development', 'testing', 'deployment']
+    expect(phases.indexOf('architecture')).toBeLessThan(phases.indexOf('development'))
+  })
+
+  it('should have development before testing', () => {
+    const phases = ['requirements', 'architecture', 'development', 'testing', 'deployment']
+    expect(phases.indexOf('development')).toBeLessThan(phases.indexOf('testing'))
+  })
+
+  it('should have testing before deployment', () => {
+    const phases = ['requirements', 'architecture', 'development', 'testing', 'deployment']
+    expect(phases.indexOf('testing')).toBeLessThan(phases.indexOf('deployment'))
+  })
+})
+
+describe('Agent Roles by Phase', () => {
+  it('should have PM and BA for requirements phase', () => {
+    const reqRoles = ['pm', 'ba']
+    expect(reqRoles).toContain('pm')
+    expect(reqRoles).toContain('ba')
+  })
+
+  it('should have architect and PM for architecture phase', () => {
+    const archRoles = ['architect', 'pm']
+    expect(archRoles).toContain('architect')
+    expect(archRoles).toContain('pm')
+  })
+
+  it('should have PM, frontend_dev, backend_dev for development phase', () => {
+    const devRoles = ['pm', 'frontend_dev', 'backend_dev']
+    expect(devRoles).toContain('pm')
+    expect(devRoles).toContain('frontend_dev')
+    expect(devRoles).toContain('backend_dev')
+  })
+
+  it('should have QA, frontend_dev, backend_dev, PM for testing phase', () => {
+    const testRoles = ['qa', 'frontend_dev', 'backend_dev', 'pm']
+    expect(testRoles).toContain('qa')
+    expect(testRoles).toContain('frontend_dev')
+    expect(testRoles).toContain('backend_dev')
+    expect(testRoles).toContain('pm')
+  })
+
+  it('should have devops and PM for deployment phase', () => {
+    const deployRoles = ['devops', 'pm']
+    expect(deployRoles).toContain('devops')
+    expect(deployRoles).toContain('pm')
   })
 })

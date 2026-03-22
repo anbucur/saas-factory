@@ -7,10 +7,18 @@
  *
  * The broadcast function is injected by index.ts via setBroadcast() before
  * the worker starts, allowing activities to push real-time events to clients.
+ * 
+ * Robustness features:
+ * - Activity idempotency via deterministic keys
+ * - Compensation/saga pattern for cleanup on failure
+ * - DB-backed LLM call caching
+ * - Circuit breaker for external services
+ * - Graceful shutdown handling
  */
 
 import { createRequire } from 'node:module'
 import { Worker } from '@temporalio/worker'
+import { Context, ApplicationFailure } from '@temporalio/activity'
 import { v4 as uuid } from 'uuid'
 import { db } from './db/index.js'
 import {
@@ -23,15 +31,24 @@ import {
   activityLog,
   phaseMetrics,
   generatedFiles,
-  cliSessions,
 } from './db/schema.js'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { AGENT_ROLES } from './agents/roles.js'
 import { callLLM } from './agents/llm.js'
 import { runCodingAgent, isCodingAgentAvailable } from './agents/coding-agent.js'
 import { detectStack, getDeploymentOptions, redeployProject, getProjectDir } from './agents/deployment-manager.js'
 import type { AgentRole } from './agents/roles.js'
-import { generatePdf, generateRequirementsDocPdf } from './utils/pdf-generator.js'
+import {
+  generateIdempotencyKey,
+  generatePhaseIdempotencyKey,
+  isTransientError,
+  markPhaseCompleted,
+  isPhaseCompleted,
+  getPhaseResults,
+  executeCompensation,
+  callWithCircuitBreaker,
+  type LLMCallOptions,
+} from './lib/robustness.js'
 
 const require = createRequire(import.meta.url)
 
@@ -149,9 +166,9 @@ function getPhaseSubtasks(phase: string, role: string): Array<{ label: string; p
     ]
     if (role === 'frontend_dev') return [
       { label: 'Folder structure & setup', prompt: 'Define the frontend app structure, folder layout, and core configuration files (routing, types).', maxTokens: 800 },
-      { label: 'Design system & theme', prompt: 'Define the design tokens (colors, typography) and 5 core reusable UI components. Reference 21st.dev for component patterns and adapt them to your tech stack.', maxTokens: 800 },
-      { label: 'Feature implementation (A)', prompt: 'Write the TypeScript/JSX code for the primary user dashboard or landing page. Use 21st.dev to find similar component patterns for reference.', maxTokens: 1200 },
-      { label: 'Feature implementation (B)', prompt: 'Write the code for the main functional feature (e.g. search, editor, or list view). Apply 21st.dev component patterns where applicable.', maxTokens: 1200 },
+      { label: 'Design system & theme', prompt: 'Define the design tokens (colors, typography) and 5 core reusable UI components.', maxTokens: 800 },
+      { label: 'Feature implementation (A)', prompt: 'Write the TypeScript/JSX code for the primary user dashboard or landing page.', maxTokens: 1200 },
+      { label: 'Feature implementation (B)', prompt: 'Write the code for the main functional feature (e.g. search, editor, or list view).', maxTokens: 1200 },
     ]
     if (role === 'backend_dev') return [
       { label: 'API Server structure', prompt: 'Define the backend folder structure, middleware chain, and error handling pattern.', maxTokens: 800 },
@@ -209,10 +226,427 @@ function getArtifactType(phase: string, role: string): string | null {
   if (phase === 'requirements' && role === 'ba') return 'spec'
   if (phase === 'requirements' && role === 'pm') return 'documentation'
   if (phase === 'architecture' && role === 'architect') return 'architecture'
+  if (phase === 'design' && role === 'ux_designer') return 'design_doc'
   if (phase === 'development' && (role === 'frontend_dev' || role === 'backend_dev')) return 'code'
   if (phase === 'testing' && role === 'qa') return 'test_report'
   if (phase === 'deployment' && role === 'devops') return 'deployment_config'
   return null
+}
+
+/**
+ * CORE DELIVERABLES - Tier 1 artifact generation
+ * 
+ * Defines the mandatory artifact-creating work per role per phase.
+ * These are the "thinking artifacts" - always created, always unique per project.
+ * Each deliverable has:
+ *   - artifactType: matches getArtifactType output
+ *   - title: display name for the artifact
+ *   - prompt: LLM prompt to generate the artifact content
+ *   - description: what this artifact contains
+ */
+export const CORE_DELIVERABLES: Record<string, Record<string, {
+  artifactType: string;
+  title: string;
+  description: string;
+  promptTemplate: string;
+}>> = {
+  requirements: {
+    ba: {
+      artifactType: 'spec',
+      title: 'User Stories & Requirements Document',
+      description: 'Comprehensive user stories with acceptance criteria, user personas, data model, and non-functional requirements',
+      promptTemplate: `Generate a comprehensive User Stories & Requirements Document for the following project.
+
+## Project
+{{projectName}}: {{projectDescription}}
+
+## Context
+{{context}}
+
+## Instructions
+Create a detailed requirements document containing:
+1. **User Personas** - 2-3 primary personas with goals, pain points, and use frequency
+2. **User Stories** - 6-10 user stories in "As a [role], I want [feature], so that [benefit]" format with:
+   - Clear acceptance criteria (2-4 criteria per story)
+   - Priority labels (critical/high/medium)
+3. **Data Model** - Core entities with fields, types, and relationships
+4. **Non-Functional Requirements** - Performance, security, scalability expectations
+
+Format with clear markdown headings. Be specific and actionable.`,
+    },
+    pm: {
+      artifactType: 'documentation',
+      title: 'Project Charter & Planning Document',
+      description: 'Project charter, timeline, sprint structure, and risk register',
+      promptTemplate: `Generate a Project Charter & Planning Document for the following project.
+
+## Project
+{{projectName}}: {{projectDescription}}
+
+## Context
+{{context}}
+
+## Instructions
+Create a comprehensive planning document containing:
+1. **Project Charter** - Business objective, success metrics, key stakeholders
+2. **High-Level Timeline** - 4-5 major milestones with estimated dates
+3. **Sprint Structure** - 3-4 sprints with clear goals and deliverables
+4. **Risk Register** - 3-5 risks with likelihood, impact, and mitigation strategies
+5. **Team Allocation** - How team members are allocated across phases
+
+Format with clear markdown headings. Be realistic with estimates.`,
+    },
+  },
+  architecture: {
+    architect: {
+      artifactType: 'architecture',
+      title: 'System Architecture Specification',
+      description: 'Architecture diagrams, API contracts, database schema, component design, and security strategy',
+      promptTemplate: `Generate a System Architecture Specification for the following project.
+
+## Project
+{{projectName}}: {{projectDescription}}
+
+## Context
+{{context}}
+
+## Instructions
+Create a comprehensive architecture document containing:
+1. **System Overview** - Architecture pattern, technology stack choices with rationale
+2. **Component Architecture** - Frontend, backend, database, caching, external services
+3. **API Contracts** - 6-8 key endpoints with paths, methods, request/response shapes
+4. **Database Schema** - Tables, columns, types, keys, indexes, constraints
+5. **Component Interfaces** - How major components interact and communicate
+6. **Security Strategy** - Auth flow, RBAC, encryption, input validation
+
+Format with clear markdown headings. Use tables for schemas and API specs.`,
+    },
+  },
+  design: {
+    ux_designer: {
+      artifactType: 'design_doc',
+      title: 'Design System & Wireframes',
+      description: 'User flows, wireframes, design tokens, component library, and responsive strategy',
+      promptTemplate: `Generate a Design System & Wireframes Document for the following project.
+
+## Project
+{{projectName}}: {{projectDescription}}
+
+## Context
+{{context}}
+
+## Instructions
+Create a comprehensive design document containing:
+1. **User Flows** - Screen-by-screen flows for 3-4 key user journeys
+2. **Wireframes** - ASCII/text wireframes for 5-6 key screens (login, dashboard, main feature, settings, etc.)
+3. **Design Tokens** - Color palette, typography scale, spacing, border radii, shadows
+4. **Component Library** - 6-8 core reusable components with props, variants, and states
+5. **Responsive Strategy** - Mobile/tablet/desktop breakpoints and adaptations
+6. **Accessibility** - ARIA roles, keyboard navigation, contrast requirements
+
+Format with clear markdown headings. Be specific about component states.`,
+    },
+  },
+  testing: {
+    qa: {
+      artifactType: 'test_report',
+      title: 'Test Plan & Test Cases',
+      description: 'Test strategy, unit tests, integration tests, security tests, and test coverage plan',
+      promptTemplate: `Generate a comprehensive Test Plan & Test Cases Document for the following project.
+
+## Project
+{{projectName}}: {{projectDescription}}
+
+## Context
+{{context}}
+
+## Instructions
+Create a comprehensive testing document containing:
+1. **Test Strategy** - Testing scope, approach, tooling (Vitest), environment requirements
+2. **Unit Test Cases** - 6-8 test scenarios for critical business logic with test inputs and expected outputs
+3. **Integration Test Cases** - 4-5 end-to-end scenarios for core user flows
+4. **Security Test Cases** - 4-5 security scenarios (auth bypass, injection, CSRF, data exposure)
+5. **Test Coverage Goals** - Target coverage percentages for critical paths
+
+Format with clear markdown headings. Be specific about test data and assertions.`,
+    },
+  },
+  deployment: {
+    devops: {
+      artifactType: 'deployment_config',
+      title: 'Deployment Configuration & Runbook',
+      description: 'Docker configuration, CI/CD pipeline, deployment steps, and rollback procedures',
+      promptTemplate: `Generate a Deployment Configuration & Runbook Document for the following project.
+
+## Project
+{{projectName}}: {{projectDescription}}
+
+## Context
+{{context}}
+
+## Instructions
+Create a comprehensive deployment document containing:
+1. **Infrastructure Overview** - Docker setup, docker-compose services, port mappings, environment variables
+2. **CI/CD Pipeline** - Pipeline stages (lint, test, build, push, deploy) with specific commands
+3. **Deployment Steps** - Step-by-step production deployment procedure with verification commands
+4. **Rollback Procedure** - How to safely rollback to previous version
+5. **Health Checks** - 5-6 critical health metrics and their acceptable thresholds
+6. **Environment Matrix** - DEV, STAGING, PROD configuration differences
+
+Format with clear markdown headings. Use code blocks for configuration files.`,
+    },
+  },
+}
+
+/**
+ * ROLES that create Tier 1 artifacts (thinking/coordination roles)
+ */
+export const TIER1_ARTIFACT_ROLES = ['ba', 'pm', 'architect', 'ux_designer', 'qa', 'devops'] as const
+
+// ── Shrimp MCP Task Orchestration Functions ────────────────────────────────────
+
+/**
+ * Analyzes work context for a role in a given phase using Shrimp MCP.
+ * Returns requirements, risks, and dependencies identified by Shrimp.
+ */
+async function analyzeWorkForRole(
+  projectId: string,
+  projectName: string,
+  phase: string,
+  role: string,
+  context: string
+): Promise<{ requirements: string[]; risks: string[]; dependencies: string[] }> {
+  try {
+    const { getShrimpClient } = await import('./mcp/index.js')
+    const shrimp = await getShrimpClient()
+
+    if (!shrimp.isConnected()) {
+      logActivity(projectId, null, role as AgentRole, 'Shrimp unavailable', 'Using fallback analysis', 'warning', phase)
+      return { requirements: [], risks: [], dependencies: [] }
+    }
+
+    const summary = `${phase} phase work for ${role} in ${projectName}`
+    const initialConcept = `Role: ${role}\nPhase: ${phase}\nContext:\n${context}`
+
+    const result = await shrimp.analyzeTask(summary, initialConcept)
+
+    logActivity(projectId, null, role as AgentRole, 'Shrimp analysis complete',
+      `Identified ${result.requirements?.length || 0} requirements, ${result.risks?.length || 0} risks`,
+      'info', phase)
+
+    return {
+      requirements: result.requirements || [],
+      risks: result.risks || [],
+      dependencies: result.dependencies || [],
+    }
+  } catch (error) {
+    console.warn(`[Worker] Shrimp analyze_task failed: ${error}`)
+    logActivity(projectId, null, role as AgentRole, 'Shrimp analysis failed', String(error), 'warning', phase)
+    return { requirements: [], risks: [], dependencies: [] }
+  }
+}
+
+/**
+ * Plans work for a role using Shrimp MCP.
+ * Returns a structured work plan based on analysis results.
+ */
+async function planWorkForRole(
+  projectId: string,
+  phase: string,
+  role: string,
+  analysis: { requirements: string[]; risks: string[]; dependencies: string[] },
+  tier1ArtifactTitle: string
+): Promise<{ taskId: string; name: string; description: string } | null> {
+  try {
+    const { getShrimpClient } = await import('./mcp/index.js')
+    const shrimp = await getShrimpClient()
+
+    if (!shrimp.isConnected()) {
+      return null
+    }
+
+    const content = `Plan the ${phase} phase work for ${role}.
+    
+Tier 1 Artifact to Create: ${tier1ArtifactTitle}
+
+Requirements from analysis:
+${analysis.requirements.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+Risks to address:
+${analysis.risks.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+Dependencies:
+${analysis.dependencies.map((d, i) => `${i + 1}. ${d}`).join('\n')}`
+
+    const result = await shrimp.planTask(content)
+
+    logActivity(projectId, null, role as AgentRole, 'Shrimp plan created',
+      `Plan: ${result.name}`, 'info', phase)
+
+    return {
+      taskId: result.taskId,
+      name: result.name,
+      description: result.description,
+    }
+  } catch (error) {
+    console.warn(`[Worker] Shrimp plan_task failed: ${error}`)
+    return null
+  }
+}
+
+/**
+ * Splits work into atomic, verifiable subtasks using Shrimp MCP.
+ * Returns array of subtasks ready for database insertion.
+ */
+async function splitWorkIntoTasks(
+  projectId: string,
+  phase: string,
+  role: string,
+  globalAnalysis: string,
+  tier1ArtifactId: string,
+  subtaskSlice?: { start: number; end: number; total: number }
+): Promise<Array<{
+  title: string;
+  description: string;
+  priority: string;
+  sprint: number;
+  hours: number;
+  dependencies: string[];
+  parentTaskId: string | null;
+}>> {
+  try {
+    const { getShrimpClient } = await import('./mcp/index.js')
+    const shrimp = await getShrimpClient()
+
+    if (!shrimp.isConnected()) {
+      return []
+    }
+
+    // Use static templates as the base tasks to split
+    const baseTemplates = TASK_TEMPLATES[phase]?.[role] || []
+    const templatesToSplit = subtaskSlice && subtaskSlice.total > 1
+      ? baseTemplates.filter((_, i) => i % subtaskSlice.total === subtaskSlice.start)
+      : baseTemplates
+
+    if (templatesToSplit.length === 0) {
+      return []
+    }
+
+    const tasksRaw = JSON.stringify(templatesToSplit.map((t, i) => ({
+      name: t.title,
+      description: `${t.description}. Completable in ${t.hours} hours. Priority: ${t.priority}.`,
+      implementationGuide: `Execute the ${t.title.toLowerCase()} task for the ${phase} phase as a ${role} agent.`,
+      dependencies: i > 0 ? [templatesToSplit[0].title] : [],
+      notes: `Estimated ${t.hours}h, ${t.priority} priority`,
+      verificationCriteria: `Task "${t.title}" output is reviewed and meets acceptance criteria.`,
+    })))
+
+    const splitResult = await shrimp.splitTasks(globalAnalysis, tasksRaw, 'append')
+
+    // Map Shrimp's split tasks back to our format, linking to Tier 1 artifact
+    const tasks = (splitResult.tasks || []).map((task: any) => ({
+      title: task.name,
+      description: task.description || task.name,
+      priority: 'medium' as string,
+      sprint: phase === 'development' ? 2 : phase === 'testing' ? 3 : 1,
+      hours: task.notes ? parseFloat(task.notes.match(/(\d+)h?/)?.[1] || '2') : 2,
+      dependencies: task.dependencies || [],
+      parentTaskId: tier1ArtifactId,
+    }))
+
+    logActivity(projectId, null, role as AgentRole, 'Shrimp split tasks',
+      `Created ${tasks.length} atomic tasks from ${templatesToSplit.length} templates`, 'info', phase)
+
+    return tasks
+  } catch (error) {
+    console.warn(`[Worker] Shrimp split_tasks failed: ${error}`)
+    // Fallback to base templates without Shrimp splitting
+    const baseTemplates = TASK_TEMPLATES[phase]?.[role] || []
+    return baseTemplates.map(t => ({
+      title: t.title,
+      description: t.description,
+      priority: t.priority,
+      sprint: t.sprint,
+      hours: t.hours,
+      dependencies: [] as string[],
+      parentTaskId: tier1ArtifactId,
+    }))
+  }
+}
+
+/**
+ * Generates a Tier 1 artifact (the deliverable document) using LLM.
+ * Returns the artifact content and ID.
+ */
+async function generateTier1Artifact(
+  projectId: string,
+  agentId: string,
+  phase: string,
+  role: string,
+  project: { name: string; description: string; config?: string },
+  context: string
+): Promise<{ artifactId: string; content: string }> {
+  const deliverable = CORE_DELIVERABLES[phase]?.[role]
+  if (!deliverable) {
+    throw new Error(`No Tier 1 deliverable defined for ${role} in ${phase}`)
+  }
+
+  // Build context from project and previous artifacts
+  const existingArtifacts = db.select().from(artifacts)
+    .where(eq(artifacts.projectId, projectId))
+    .all()
+
+  const previousArtifactContext = existingArtifacts.length > 0
+    ? `\n\n## Previous Phase Artifacts\n${existingArtifacts.map(a =>
+        `[${a.phase}] ${a.title}:\n${a.content.substring(0, 2000)}`
+      ).join('\n\n')}`
+    : ''
+
+  const fullContext = `${context}${previousArtifactContext}`
+
+  // Fill in prompt template
+  const prompt = deliverable.promptTemplate
+    .replace('{{projectName}}', project.name)
+    .replace('{{projectDescription}}', project.description)
+    .replace('{{context}}', fullContext)
+
+  // Call LLM to generate artifact content
+  const roleConfig = AGENT_ROLES[role as AgentRole]
+  const response = await callLLM(roleConfig?.systemPrompt || '', [
+    { role: 'user', content: prompt }
+  ], { maxTokens: 4000 })
+
+  // Create artifact record
+  const artifactId = uuid()
+  db.insert(artifacts).values({
+    id: artifactId,
+    projectId,
+    agentId,
+    title: deliverable.title,
+    type: deliverable.artifactType as any,
+    content: response.content,
+    phase,
+    version: 1,
+    createdAt: new Date(),
+  }).run()
+
+  _broadcast({
+    type: 'artifact:created',
+    payload: {
+      projectId,
+      artifactId,
+      title: deliverable.title,
+      type: deliverable.artifactType,
+      agentId,
+      agentRole: role,
+      phase,
+    },
+  })
+
+  logActivity(projectId, agentId, role, 'Tier 1 artifact created',
+    `Generated ${deliverable.title} (${response.content.length} chars)`, 'success', phase)
+
+  return { artifactId, content: response.content }
 }
 
 const TASK_TEMPLATES: Record<string, Record<string, Array<{
@@ -287,20 +721,71 @@ const TASK_TEMPLATES: Record<string, Record<string, Array<{
   },
 }
 
+/**
+ * Creates Tier 2 (implementation) tasks using Shrimp MCP for dynamic task orchestration.
+ * First analyzes the work context, then splits into atomic verifiable tasks.
+ * 
+ * For roles that create Tier 1 artifacts (BA, PM, Architect, etc.), the artifactId
+ * should be passed as parentTaskId to link implementation tasks to the deliverable.
+ */
 async function createTasksAsInProgress(
   projectId: string,
   agentRecord: { id: string; role: string; copyIndex: number },
   phase: string,
-  subtaskSlice?: { start: number; end: number; total: number }
-): Promise<void> {
+  subtaskSlice?: { start: number; end: number; total: number },
+  options?: {
+    projectName?: string;
+    context?: string;
+    parentArtifactId?: string;
+  }
+): Promise<{ tier1ArtifactId?: string; tasksCreated: number }> {
   const now = new Date()
+  const { projectName, context, parentArtifactId } = options || {}
+
+  // Check if this role creates Tier 1 artifacts
+  const isTier1Role = (TIER1_ARTIFACT_ROLES as readonly string[]).includes(agentRecord.role)
+  const deliverable = CORE_DELIVERABLES[phase]?.[agentRecord.role]
+
+  let tier1ArtifactId = parentArtifactId
+
+  // For Tier 1 artifact roles, analyze work using Shrimp and create parent artifact
+  if (isTier1Role && deliverable && !parentArtifactId) {
+    try {
+      // Analyze work context
+      const analysis = await analyzeWorkForRole(
+        projectId,
+        projectName || 'Unknown Project',
+        phase,
+        agentRecord.role,
+        context || ''
+      )
+
+      // Generate Tier 1 artifact (the deliverable document)
+      const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+      if (project) {
+        const artifactResult = await generateTier1Artifact(
+          projectId,
+          agentRecord.id,
+          phase,
+          agentRecord.role,
+          { name: project.name, description: project.description, config: project.config || undefined },
+          context || ''
+        )
+        tier1ArtifactId = artifactResult.artifactId
+      }
+    } catch (error) {
+      console.warn(`[Worker] Failed to create Tier 1 artifact for ${agentRecord.role}: ${error}`)
+      logActivity(projectId, agentRecord.id, agentRecord.role, 'Tier 1 artifact failed', String(error), 'warning', phase)
+    }
+  }
+
+  // Get templates for this role/phase
   let templates = TASK_TEMPLATES[phase]?.[agentRecord.role] ?? []
-  
+
   // Distribute templates evenly across parallel copies
   if (subtaskSlice && subtaskSlice.total > 1) {
     templates = templates.filter((_, i) => i % subtaskSlice.total === subtaskSlice.start)
     if (templates.length === 0) {
-      // Fallback: if there are fewer templates than agents, just give them a generic placeholder template
       templates = [{ title: `Assist with ${phase}`, description: `Support the ${agentRecord.role} tasks in ${phase}`, priority: 'medium', sprint: 1, hours: 2 }]
     }
   }
@@ -308,29 +793,87 @@ async function createTasksAsInProgress(
   // Check which tasks already exist for this agent+phase so we don't double-insert
   const existing = db.select().from(tasks).where(eq(tasks.projectId, projectId)).all()
   const existingTitles = new Set(existing.filter(t => t.phase === phase && t.assigneeId === agentRecord.id).map(t => t.title))
-  for (const template of templates) {
-    if (existingTitles.has(template.title)) continue
+
+  // Try to use Shrimp for dynamic task splitting
+  let tasksToCreate: Array<{
+    title: string;
+    description: string;
+    priority: string;
+    sprint: number;
+    hours: number;
+    dependencies: string[];
+    parentTaskId: string | null;
+  }> = []
+
+  if (tier1ArtifactId && projectName) {
+    const globalAnalysis = `Phase: ${phase}, Role: ${agentRecord.role}, Project: ${projectName}. ` +
+      `This is a ${phase} phase task for a ${agentRecord.role} agent. ` +
+      `Generate atomic, verifiable tasks that can be completed independently.`
+
+    tasksToCreate = await splitWorkIntoTasks(
+      projectId,
+      phase,
+      agentRecord.role,
+      globalAnalysis,
+      tier1ArtifactId,
+      subtaskSlice
+    )
+  }
+
+  // Fallback to template-based tasks if Shrimp didn't return anything
+  if (tasksToCreate.length === 0) {
+    tasksToCreate = templates.map(t => ({
+      title: t.title,
+      description: t.description,
+      priority: t.priority,
+      sprint: t.sprint,
+      hours: t.hours,
+      dependencies: [] as string[],
+      parentTaskId: tier1ArtifactId || null,
+    }))
+  }
+
+  let tasksCreated = 0
+  for (const task of tasksToCreate) {
+    if (existingTitles.has(task.title)) continue
     const taskId = uuid()
     db.insert(tasks).values({
       id: taskId,
       projectId,
       assigneeId: agentRecord.id,
-      title: template.title,
-      description: template.description,
+      title: task.title,
+      description: task.description,
       status: 'in_progress',
-      priority: template.priority as any,
-      sprint: template.sprint,
+      priority: task.priority as any,
+      sprint: task.sprint,
       phase,
-      estimatedHours: template.hours,
+      estimatedHours: task.hours,
+      dependencies: JSON.stringify(task.dependencies),
+      parentTaskId: task.parentTaskId,
       createdAt: now,
       updatedAt: now,
       completedAt: null,
     }).run()
     _broadcast({
       type: 'task:created',
-      payload: { projectId, taskId, title: template.title, status: 'in_progress', assigneeId: agentRecord.id, phase, description: template.description, priority: template.priority, sprint: template.sprint, estimatedHours: template.hours },
+      payload: {
+        projectId,
+        taskId,
+        title: task.title,
+        status: 'in_progress',
+        assigneeId: agentRecord.id,
+        phase,
+        description: task.description,
+        priority: task.priority,
+        sprint: task.sprint,
+        estimatedHours: task.hours,
+        parentTaskId: task.parentTaskId,
+      },
     })
+    tasksCreated++
   }
+
+  return { tier1ArtifactId, tasksCreated }
 }
 
 async function markTasksDone(projectId: string, agentRecord: { id: string; role: string; copyIndex: number }, phase: string): Promise<void> {
@@ -356,6 +899,30 @@ async function markTasksDone(projectId: string, agentRecord: { id: string; role:
 export async function setupPhase(input: { projectId: string; phase: string }): Promise<{ conversationId: string; metricsId: string }> {
   const { projectId, phase } = input
 
+  // Idempotency check - return existing state if phase already completed
+  const existingResult = await getPhaseResults(projectId, phase)
+  if (existingResult) {
+    logActivity(projectId, null, null, `Phase setup: ${phase}`, `Skipping - phase already completed (idempotent)`, 'info', phase)
+    return { conversationId: existingResult.conversationId, metricsId: existingResult.metricsId }
+  }
+
+  // Check if phase metrics already exist (in-progress)
+  const existingMetrics = db.select().from(phaseMetrics)
+    .where(and(eq(phaseMetrics.projectId, projectId), eq(phaseMetrics.phase, phase)))
+    .get()
+  
+  if (existingMetrics && existingMetrics.status === 'in_progress') {
+    // Phase is in progress, find existing conversation
+    const existingConv = db.select().from(conversations)
+      .where(and(eq(conversations.projectId, projectId), eq(conversations.phase, phase)))
+      .get()
+    
+    if (existingConv) {
+      return { conversationId: existingConv.id, metricsId: existingMetrics.id }
+    }
+  }
+
+  // Create new phase state
   db.update(projects)
     .set({ currentPhase: phase as any, updatedAt: new Date() })
     .where(eq(projects.id, projectId))
@@ -386,6 +953,10 @@ export async function setupPhase(input: { projectId: string; phase: string }): P
   }).run()
 
   _broadcast({ type: 'conversation:created', payload: { projectId, conversationId, title, phase } })
+  
+  // Mark phase as started in workflow state
+  await markPhaseCompleted(projectId, phase, { conversationId, metricsId })
+  
   return { conversationId, metricsId }
 }
 
@@ -401,21 +972,58 @@ export async function runAgentWork(input: {
   const { projectId, phase, role, conversationId, metricsId, subtaskSlice } = input
   const agentStartTime = Date.now()
 
-  const roleConfig = AGENT_ROLES[role as AgentRole]
-  if (!roleConfig) throw new Error(`Unknown agent role: ${role}`)
+  // Heartbeat setup for long-running activity
+  const { heartbeat } = Context.current()
+  let heartbeatInterval: NodeJS.Timeout | null = null
 
-  // Find the agent: use explicit agentId if provided, otherwise first match by role
-  const allRoleAgents = db.select().from(agents)
-    .where(eq(agents.projectId, projectId))
-    .all()
-    .filter(a => a.role === role)
-  const agentRecord = input.agentId
-    ? allRoleAgents.find(a => a.id === input.agentId)
-    : allRoleAgents[0]
-  if (!agentRecord) throw new Error(`Agent ${role}${input.agentId ? `(${input.agentId})` : ''} not found for project ${projectId}`)
+  const cleanup = () => {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval)
+      heartbeatInterval = null
+    }
+  }
 
-  const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
-  if (!project) throw new Error(`Project ${projectId} not found`)
+  // Start heartbeat every 30 seconds
+  try {
+    heartbeatInterval = setInterval(() => {
+      try {
+        heartbeat({ phase, role, progress: 'working' })
+      } catch {
+        cleanup()
+      }
+    }, 30000)
+  } catch {
+    // Heartbeat not available in this context
+  }
+
+  const idempotencyKey = generatePhaseIdempotencyKey(
+    projectId, phase, role,
+    subtaskSlice?.start ?? 0
+  )
+
+  try {
+    const roleConfig = AGENT_ROLES[role as AgentRole]
+    if (!roleConfig) {
+      throw ApplicationFailure.nonRetryable(`Unknown agent role: ${role}`)
+    }
+
+    const allRoleAgents = db.select().from(agents)
+      .where(eq(agents.projectId, projectId))
+      .all()
+      .filter(a => a.role === role)
+    const agentRecord = input.agentId
+      ? allRoleAgents.find(a => a.id === input.agentId)
+      : allRoleAgents[0]
+    if (!agentRecord) {
+      throw ApplicationFailure.nonRetryable(`Agent ${role}${input.agentId ? `(${input.agentId})` : ''} not found for project ${projectId}`)
+    }
+
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) {
+      throw ApplicationFailure.nonRetryable(`Project ${projectId} not found`)
+    }
+
+    logActivity(projectId, agentRecord.id, role, `${roleConfig.name} starting`, `Idempotency key: ${idempotencyKey.substring(0, 8)}...`, 'info', phase)
 
   // thinking
   db.update(agents)
@@ -478,7 +1086,11 @@ export async function runAgentWork(input: {
   const taskDesc = mySubtasks[0]?.label ?? getTaskDescription(phase, role)
 
   // working — emit tasks as in_progress immediately so sprint board shows live state
-  await createTasksAsInProgress(projectId, agentRecord as any, phase, subtaskSlice)
+  // Two-tier task creation: Tier 1 artifact (via Shrimp + LLM) + Tier 2 implementation tasks (via Shrimp split)
+  await createTasksAsInProgress(projectId, agentRecord as any, phase, subtaskSlice, {
+    projectName: project.name,
+    context: context,
+  })
 
   db.update(agents)
     .set({ status: 'working', progress: 20, currentTask: taskDesc })
@@ -497,7 +1109,7 @@ export async function runAgentWork(input: {
   if (shouldUseCodingAgent) {
     const codingAgent = isCodingAgentAvailable()
     if (!codingAgent.available) {
-      const errorMsg = 'No coding agent is available. Code generation requires Claude Code (`npm i -g @anthropic-ai/claude-code`) or another CLI-based coding agent.'
+      const errorMsg = 'Claude Code is not installed. Code generation requires Claude Code. Install it with `npm i -g @anthropic-ai/claude-code`.'
       logActivity(projectId, agentRecord.id, role, 'Coding agent unavailable', errorMsg, 'error', phase)
       throw new Error(errorMsg)
     }
@@ -516,38 +1128,15 @@ export async function runAgentWork(input: {
       projectName: project.name,
       task: `${getPhasePrompt(phase, role)}\n\nHere is the implementation plan from the team:\n${planResponse.content}`,
       context,
-      agentId: agentRecord.id,
-      agentRole: role,
-      phase,
     })
-
-    // Save CLI session to database
-    const sessionId = uuid()
-    db.insert(cliSessions).values({
-      id: sessionId,
-      projectId,
-      agentId: agentRecord.id,
-      agentRole: role,
-      provider: codingResult.provider,
-      task: getPhasePrompt(phase, role),
-      prompt: codingResult.prompt || '',
-      output: codingResult.output,
-      error: codingResult.error || null,
-      success: codingResult.success,
-      filesCreated: JSON.stringify(codingResult.filesCreated),
-      filesModified: JSON.stringify(codingResult.filesModified),
-      duration: codingResult.duration,
-      phase,
-      createdAt: new Date(),
-    }).run()
 
     usedCodingAgent = true
     if (codingResult.success) {
       responseContent = `## Implementation Complete\n\n${planResponse.content}\n\n### Coding Agent Output\n${codingResult.output}\n\n### Files Created\n${codingResult.filesCreated.map(f => `- ${f}`).join('\n') || 'None'}\n\n### Duration\n${Math.round(codingResult.duration / 1000)}s`
     } else {
-      const errorMsg = codingResult.error ?? 'Coding agent failed to generate code.'
+      const errorMsg = codingResult.error ?? 'Claude Code failed to generate code.'
       logActivity(projectId, agentRecord.id, role, 'Code generation failed', errorMsg, 'error', phase)
-      throw new Error(`Coding agent failed for ${roleConfig.name}: ${errorMsg}`)
+      throw new Error(`Claude Code failed for ${roleConfig.name}: ${errorMsg}`)
     }
   } else {
     // Non-coding path: run assigned subtasks sequentially with live progress
@@ -592,24 +1181,6 @@ export async function runAgentWork(input: {
   const artifactType = getArtifactType(phase, role)
   if (artifactType) {
     const artifactId = uuid()
-    let pdfContent: string | null = null
-    let hasPdf = false
-
-    try {
-      const pdfBuffer = await generatePdf({
-        title: `${roleConfig.name} - ${phase} Output`,
-        subtitle: `${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase`,
-        content: responseContent,
-        type: artifactType as any,
-        projectName: project.name,
-        phase,
-      })
-      pdfContent = pdfBuffer.toString('base64')
-      hasPdf = true
-    } catch (pdfErr) {
-      console.error('Failed to generate PDF for artifact:', pdfErr)
-    }
-
     db.insert(artifacts).values({
       id: artifactId,
       projectId,
@@ -617,14 +1188,12 @@ export async function runAgentWork(input: {
       title: `${roleConfig.name} - ${phase} Output`,
       type: artifactType as any,
       content: responseContent,
-      pdfContent,
-      hasPdf,
       phase,
       createdAt: new Date(),
     }).run()
     _broadcast({
       type: 'artifact:created',
-      payload: { projectId, artifactId, title: `${roleConfig.name} - ${phase} Output`, type: artifactType, agentId: agentRecord.id, agentRole: role, phase, hasPdf },
+      payload: { projectId, artifactId, title: `${roleConfig.name} - ${phase} Output`, type: artifactType, agentId: agentRecord.id, agentRole: role, phase },
     })
   }
 
@@ -661,6 +1230,28 @@ export async function runAgentWork(input: {
 
   // Small delay for visual pacing
   await new Promise(resolve => setTimeout(resolve, 300))
+  cleanup()
+  } catch (error) {
+    cleanup()
+    
+    // Execute compensation on failure
+    const compensationRecords = [
+      { type: 'delete' as const, table: 'tasks', filter: { projectId, phase }, details: { reason: `${role} failed` } },
+    ]
+    await executeCompensation(projectId, phase, 'runAgentWork', compensationRecords)
+    
+    // Classify error and re-throw
+    if (isTransientError(error)) {
+      logActivity(projectId, null, role, `${role} transient failure`, String(error), 'warning', phase)
+      throw ApplicationFailure.retryable(String(error))
+    }
+    
+    if (error instanceof ApplicationFailure) {
+      throw error
+    }
+    
+    throw ApplicationFailure.nonRetryable(String(error))
+  }
 }
 
 export async function runCollaborationRound(input: {
@@ -838,6 +1429,9 @@ export async function getAgentPool(input: { projectId: string; phase: string }):
 
 // ── Worker startup ────────────────────────────────────────────────────────────
 
+let currentWorker: Worker | null = null
+let isShuttingDown = false
+
 export async function startWorker(): Promise<void> {
   const worker = await Worker.create({
     workflowsPath: require.resolve('@saas-factory/temporal-workflows'),
@@ -852,12 +1446,54 @@ export async function startWorker(): Promise<void> {
       executeDeployment,
       getAgentPool,
     },
-    taskQueue: 'saas-factory',
+    namespace: 'default',
+    taskQueue: 'factory-builds',
+    maxConcurrentActivityTaskExecutions: 10,
+    maxConcurrentWorkflowTaskExecutions: 5,
   })
 
-  // Run in background — crashes are fatal since Temporal handles retries at the activity level
+  currentWorker = worker
+
+  console.log('[Worker] Temporal worker started on task queue: factory-builds')
+  console.log('[Worker] Graceful shutdown timeout: 30s')
+  
+  // Graceful shutdown handling
+  const shutdown = async (signal: string) => {
+    if (isShuttingDown) {
+      console.log('[Worker] Shutdown already in progress...')
+      return
+    }
+    isShuttingDown = true
+    console.log(`[Worker] Received ${signal}, initiating graceful shutdown...`)
+    console.log('[Worker] Allowing in-flight activities to complete (max 30s)...')
+    
+    try {
+      await worker.shutdown()
+      console.log('[Worker] Graceful shutdown completed')
+      process.exit(0)
+    } catch (err) {
+      console.error('[Worker] Error during shutdown:', err)
+      process.exit(1)
+    }
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  process.on('SIGINT', () => shutdown('SIGINT'))
+
+  // Run worker - let Temporal handle activity retries
+  // Only exit on truly fatal errors
   worker.run().catch(err => {
-    console.error('[Worker] Temporal worker crashed:', err)
-    process.exit(1)
+    if (!isShuttingDown) {
+      console.error('[Worker] Fatal worker error:', err)
+      process.exit(1)
+    }
   })
+}
+
+export async function stopWorker(): Promise<void> {
+  if (currentWorker) {
+    console.log('[Worker] Stopping worker...')
+    await currentWorker.shutdown()
+    currentWorker = null
+  }
 }
