@@ -37,6 +37,27 @@ services:
     depends_on:
       - temporal
 
+  factory-worker:
+    build:
+      context: ./apps/factory-worker
+      dockerfile: Dockerfile
+    depends_on:
+      - temporal
+      - postgres
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - DATABASE_PATH=/app/data/saas-factory.db
+      - API_WS_URL=ws://host.docker.internal:3010/ws
+      - TASK_QUEUE=factory-builds
+    volumes:
+      - ./apps/factory-backend/data:/app/data
+    networks:
+      - default
+
 volumes:
   postgres_data:
   temporal_data:
+
+networks:
+  default:
+    name: saas-factory-network

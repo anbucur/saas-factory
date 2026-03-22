@@ -3,6 +3,21 @@
  * Actual implementations live in apps/factory-backend/src/worker.ts
  */
 
+export interface GetWorkflowStateInput {
+  projectId: string
+}
+
+export interface WorkflowStateOutput {
+  paused: boolean
+  currentPhase: string
+}
+
+export interface SaveWorkflowStateInput {
+  projectId: string
+  paused: boolean
+  currentPhase: string
+}
+
 export interface SetupPhaseInput {
   projectId: string
   phase: string
@@ -124,5 +139,13 @@ export interface GetAgentPoolOutput {
 }
 
 export async function getAgentPool(_input: GetAgentPoolInput): Promise<GetAgentPoolOutput> {
+  throw new Error('Activity stub — implemented in worker')
+}
+
+export async function getWorkflowState(_input: GetWorkflowStateInput): Promise<WorkflowStateOutput | null> {
+  throw new Error('Activity stub — implemented in worker')
+}
+
+export async function saveWorkflowState(_input: SaveWorkflowStateInput): Promise<void> {
   throw new Error('Activity stub — implemented in worker')
 }
