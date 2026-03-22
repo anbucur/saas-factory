@@ -179,6 +179,17 @@ export const compensationLog = sqliteTable('compensation_log', {
   completedAt: integer('completed_at', { mode: 'timestamp' }),
 });
 
+export const settings = sqliteTable('settings', {
+  id: text('id').primaryKey(),
+  activeCodingProvider: text('active_coding_provider', { enum: ['claude-code', 'opencode'] }).notNull().default('opencode'),
+  minimaxApiKey: text('minimax_api_key'),
+  providerConfigs: text('provider_configs').notNull().default('{}'), // JSON
+  soundEnabled: integer('sound_enabled', { mode: 'boolean' }).notNull().default(true),
+  animationsEnabled: integer('animations_enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
 // Type exports
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;

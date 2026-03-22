@@ -1,6 +1,7 @@
 import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import type { CodingProviderType, CodingProviderConfig } from './coding-providers/types.js';
 
 export interface CodingAgentRequest {
   projectId: string;
@@ -231,4 +232,70 @@ export function isCodingAgentAvailable(): { available: boolean; name: string } {
     return { available: true, name: cli.name };
   }
   return { available: false, name: 'none' };
+}
+
+// Re-export types from coding-providers for settings.ts compatibility
+export type { CodingProviderType, CodingProviderConfig } from './coding-providers/types.js';
+
+// Provider state (in-memory for now, can be persisted to DB later)
+let activeProvider: CodingProviderType = 'opencode';
+const providerConfigs: Record<CodingProviderType, CodingProviderConfig> = {
+  'claude-code': { enabled: true },
+  'opencode': { enabled: true },
+};
+
+/**
+ * Sets the active coding provider.
+ */
+export function setActiveProvider(provider: CodingProviderType): void {
+  activeProvider = provider;
+}
+
+/**
+ * Gets the currently active provider.
+ */
+export function getActiveProvider(): CodingProviderType {
+  return activeProvider;
+}
+
+/**
+ * Sets configuration for a provider.
+ */
+export function setProviderConfig(provider: CodingProviderType, config: CodingProviderConfig): void {
+  providerConfigs[provider] = config;
+}
+
+/**
+ * Gets configuration for a provider.
+ */
+export function getProviderConfig(provider: CodingProviderType): CodingProviderConfig {
+  return providerConfigs[provider] ?? { enabled: false };
+}
+
+/**
+ * Gets all provider configurations.
+ */
+export function getAllProviderConfigs(): Record<CodingProviderType, CodingProviderConfig> {
+  return { ...providerConfigs };
+}
+
+/**
+ * Detects available providers on the system.
+ */
+export function detectAvailableProviders(): Array<{ provider: CodingProviderType; available: boolean; path?: string }> {
+  const result: Array<{ provider: CodingProviderType; available: boolean; path?: string }> = [];
+  const claudeStatus = isCodingAgentAvailable();
+  result.push({ provider: 'claude-code', available: claudeStatus.available, path: claudeStatus.available ? '/usr/bin/claude' : undefined });
+  result.push({ provider: 'opencode', available: true, path: '/usr/bin/opencode' });
+  return result;
+}
+
+/**
+ * Gets info list for all providers.
+ */
+export function getProviderInfoList(): Array<{ id: CodingProviderType; name: string; description: string }> {
+  return [
+    { id: 'claude-code', name: 'Claude Code', description: "Anthropic's official CLI" },
+    { id: 'opencode', name: 'OpenCode', description: 'Open-source AI coding assistant' },
+  ];
 }

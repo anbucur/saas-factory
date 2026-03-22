@@ -274,7 +274,7 @@ describe('Shrimp MCP handleResponse id handling', () => {
   });
 
   it('should not skip valid UUID ids', () => {
-    const responseId = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+    const responseId: unknown = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
     const shouldSkip = responseId === 0 || responseId === '0';
     expect(shouldSkip).toBe(false);
   });
