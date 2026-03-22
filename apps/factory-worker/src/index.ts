@@ -4,6 +4,7 @@
  * This is the main entry point for the standalone worker process.
  */
 
+import { createRequire } from 'module'
 import { Worker } from '@temporalio/worker'
 import { Connection } from '@temporalio/client'
 import { NodeSDK } from '@opentelemetry/sdk-node'
@@ -12,6 +13,8 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { JaegerPropagator } from '@opentelemetry/propagator-jaeger'
 import WebSocket from 'ws'
 import * as activities from './activities/index.js'
+
+const require = createRequire(import.meta.url)
 
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS || 'localhost:7233'
 const API_WS_URL = process.env.API_WS_URL || 'ws://localhost:3010/ws'
