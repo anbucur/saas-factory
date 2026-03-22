@@ -143,6 +143,7 @@ export const workflowState = sqliteTable('workflow_state', {
   id: text('id').primaryKey(), // Same as projectId
   projectId: text('project_id').notNull().references(() => projects.id),
   workflowType: text('workflow_type').notNull().default('buildSaaSProject'),
+  paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
   currentPhase: text('current_phase', { enum: ['requirements', 'architecture', 'development', 'testing', 'deployment', 'completed', 'failed'] }).notNull().default('requirements'),
   completedPhases: text('completed_phases').notNull().default('[]'), // JSON array
   phaseResults: text('phase_results').notNull().default('{}'), // JSON: { phase: { conversationId, metricsId, status, error? } }

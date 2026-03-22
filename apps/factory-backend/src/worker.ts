@@ -31,6 +31,7 @@ import {
   activityLog,
   phaseMetrics,
   generatedFiles,
+  workflowState,
 } from './db/schema.js'
 import { eq, and } from 'drizzle-orm'
 import { AGENT_ROLES } from './agents/roles.js'
@@ -1427,6 +1428,41 @@ export async function getAgentPool(input: { projectId: string; phase: string }):
   return pool
 }
 
+/**
+ * Retrieves workflow pause state for crash recovery.
+ * Returns null if no state is found (workflow hasn't been paused).
+ */
+export async function getWorkflowState(input: { projectId: string }): Promise<{ paused: boolean; currentPhase: string } | null> {
+  const state = db.select().from(workflowState).where(eq(workflowState.projectId, input.projectId)).get()
+  if (!state) return null
+  return { paused: state.paused, currentPhase: state.currentPhase }
+}
+
+/**
+ * Persists workflow pause state for crash recovery.
+ */
+export async function saveWorkflowState(input: { projectId: string; paused: boolean; currentPhase: string }): Promise<void> {
+  const now = new Date()
+  db.insert(workflowState).values({
+    id: input.projectId,
+    projectId: input.projectId,
+    workflowType: 'buildSaaSProject',
+    paused: input.paused,
+    currentPhase: input.currentPhase as 'requirements' | 'architecture' | 'development' | 'testing' | 'deployment' | 'completed' | 'failed',
+    completedPhases: '[]',
+    phaseResults: '{}',
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: workflowState.projectId,
+    set: {
+      paused: input.paused,
+      currentPhase: input.currentPhase as 'requirements' | 'architecture' | 'development' | 'testing' | 'deployment' | 'completed' | 'failed',
+      updatedAt: now,
+    },
+  }).run()
+}
+
 // ── Worker startup ────────────────────────────────────────────────────────────
 
 let currentWorker: Worker | null = null
@@ -1445,6 +1481,8 @@ export async function startWorker(): Promise<void> {
       prepareDeployment,
       executeDeployment,
       getAgentPool,
+      getWorkflowState,
+      saveWorkflowState,
     },
     namespace: 'default',
     taskQueue: 'factory-builds',
