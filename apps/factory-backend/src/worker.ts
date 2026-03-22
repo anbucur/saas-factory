@@ -23,6 +23,7 @@ import {
   activityLog,
   phaseMetrics,
   generatedFiles,
+  cliSessions,
 } from './db/schema.js'
 import { eq } from 'drizzle-orm'
 import { AGENT_ROLES } from './agents/roles.js'
@@ -30,6 +31,7 @@ import { callLLM } from './agents/llm.js'
 import { runCodingAgent, isCodingAgentAvailable } from './agents/coding-agent.js'
 import { detectStack, getDeploymentOptions, redeployProject, getProjectDir } from './agents/deployment-manager.js'
 import type { AgentRole } from './agents/roles.js'
+import { generatePdf, generateRequirementsDocPdf } from './utils/pdf-generator.js'
 
 const require = createRequire(import.meta.url)
 
@@ -147,9 +149,9 @@ function getPhaseSubtasks(phase: string, role: string): Array<{ label: string; p
     ]
     if (role === 'frontend_dev') return [
       { label: 'Folder structure & setup', prompt: 'Define the frontend app structure, folder layout, and core configuration files (routing, types).', maxTokens: 800 },
-      { label: 'Design system & theme', prompt: 'Define the design tokens (colors, typography) and 5 core reusable UI components.', maxTokens: 800 },
-      { label: 'Feature implementation (A)', prompt: 'Write the TypeScript/JSX code for the primary user dashboard or landing page.', maxTokens: 1200 },
-      { label: 'Feature implementation (B)', prompt: 'Write the code for the main functional feature (e.g. search, editor, or list view).', maxTokens: 1200 },
+      { label: 'Design system & theme', prompt: 'Define the design tokens (colors, typography) and 5 core reusable UI components. Reference 21st.dev for component patterns and adapt them to your tech stack.', maxTokens: 800 },
+      { label: 'Feature implementation (A)', prompt: 'Write the TypeScript/JSX code for the primary user dashboard or landing page. Use 21st.dev to find similar component patterns for reference.', maxTokens: 1200 },
+      { label: 'Feature implementation (B)', prompt: 'Write the code for the main functional feature (e.g. search, editor, or list view). Apply 21st.dev component patterns where applicable.', maxTokens: 1200 },
     ]
     if (role === 'backend_dev') return [
       { label: 'API Server structure', prompt: 'Define the backend folder structure, middleware chain, and error handling pattern.', maxTokens: 800 },
@@ -495,7 +497,7 @@ export async function runAgentWork(input: {
   if (shouldUseCodingAgent) {
     const codingAgent = isCodingAgentAvailable()
     if (!codingAgent.available) {
-      const errorMsg = 'Claude Code is not installed. Code generation requires Claude Code. Install it with `npm i -g @anthropic-ai/claude-code`.'
+      const errorMsg = 'No coding agent is available. Code generation requires Claude Code (`npm i -g @anthropic-ai/claude-code`) or another CLI-based coding agent.'
       logActivity(projectId, agentRecord.id, role, 'Coding agent unavailable', errorMsg, 'error', phase)
       throw new Error(errorMsg)
     }
@@ -514,15 +516,38 @@ export async function runAgentWork(input: {
       projectName: project.name,
       task: `${getPhasePrompt(phase, role)}\n\nHere is the implementation plan from the team:\n${planResponse.content}`,
       context,
+      agentId: agentRecord.id,
+      agentRole: role,
+      phase,
     })
+
+    // Save CLI session to database
+    const sessionId = uuid()
+    db.insert(cliSessions).values({
+      id: sessionId,
+      projectId,
+      agentId: agentRecord.id,
+      agentRole: role,
+      provider: codingResult.provider,
+      task: getPhasePrompt(phase, role),
+      prompt: codingResult.prompt || '',
+      output: codingResult.output,
+      error: codingResult.error || null,
+      success: codingResult.success,
+      filesCreated: JSON.stringify(codingResult.filesCreated),
+      filesModified: JSON.stringify(codingResult.filesModified),
+      duration: codingResult.duration,
+      phase,
+      createdAt: new Date(),
+    }).run()
 
     usedCodingAgent = true
     if (codingResult.success) {
       responseContent = `## Implementation Complete\n\n${planResponse.content}\n\n### Coding Agent Output\n${codingResult.output}\n\n### Files Created\n${codingResult.filesCreated.map(f => `- ${f}`).join('\n') || 'None'}\n\n### Duration\n${Math.round(codingResult.duration / 1000)}s`
     } else {
-      const errorMsg = codingResult.error ?? 'Claude Code failed to generate code.'
+      const errorMsg = codingResult.error ?? 'Coding agent failed to generate code.'
       logActivity(projectId, agentRecord.id, role, 'Code generation failed', errorMsg, 'error', phase)
-      throw new Error(`Claude Code failed for ${roleConfig.name}: ${errorMsg}`)
+      throw new Error(`Coding agent failed for ${roleConfig.name}: ${errorMsg}`)
     }
   } else {
     // Non-coding path: run assigned subtasks sequentially with live progress
@@ -567,6 +592,24 @@ export async function runAgentWork(input: {
   const artifactType = getArtifactType(phase, role)
   if (artifactType) {
     const artifactId = uuid()
+    let pdfContent: string | null = null
+    let hasPdf = false
+
+    try {
+      const pdfBuffer = await generatePdf({
+        title: `${roleConfig.name} - ${phase} Output`,
+        subtitle: `${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase`,
+        content: responseContent,
+        type: artifactType as any,
+        projectName: project.name,
+        phase,
+      })
+      pdfContent = pdfBuffer.toString('base64')
+      hasPdf = true
+    } catch (pdfErr) {
+      console.error('Failed to generate PDF for artifact:', pdfErr)
+    }
+
     db.insert(artifacts).values({
       id: artifactId,
       projectId,
@@ -574,12 +617,14 @@ export async function runAgentWork(input: {
       title: `${roleConfig.name} - ${phase} Output`,
       type: artifactType as any,
       content: responseContent,
+      pdfContent,
+      hasPdf,
       phase,
       createdAt: new Date(),
     }).run()
     _broadcast({
       type: 'artifact:created',
-      payload: { projectId, artifactId, title: `${roleConfig.name} - ${phase} Output`, type: artifactType, agentId: agentRecord.id, agentRole: role, phase },
+      payload: { projectId, artifactId, title: `${roleConfig.name} - ${phase} Output`, type: artifactType, agentId: agentRecord.id, agentRole: role, phase, hasPdf },
     })
   }
 
@@ -741,7 +786,7 @@ export async function prepareDeployment(input: { projectId: string }): Promise<{
     payload: { projectId, options },
   })
 
-  return { options, stackDetected: stack as Record<string, unknown> }
+  return { options, stackDetected: stack as unknown as Record<string, unknown> }
 }
 
 /**
@@ -805,13 +850,11 @@ export async function startWorker(): Promise<void> {
       failProject,
       prepareDeployment,
       executeDeployment,
+      getAgentPool,
     },
-    namespace: 'default',
-    taskQueue: 'factory-builds',
-    maxConcurrentActivityTaskExecutions: 10,
+    taskQueue: 'saas-factory',
   })
 
-  console.log('[Worker] Temporal worker started on task queue: factory-builds')
   // Run in background — crashes are fatal since Temporal handles retries at the activity level
   worker.run().catch(err => {
     console.error('[Worker] Temporal worker crashed:', err)
